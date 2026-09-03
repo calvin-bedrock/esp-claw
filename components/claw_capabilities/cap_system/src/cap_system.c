@@ -132,6 +132,7 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
         return err;
     }
 
+#if CAP_SYSTEM_SNTP_RETRY_COUNT > 0
     while ((wait_err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(CAP_SYSTEM_SNTP_WAIT_MS))) == ESP_ERR_TIMEOUT &&
            ++retry < CAP_SYSTEM_SNTP_RETRY_COUNT) {
         ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, CAP_SYSTEM_SNTP_RETRY_COUNT);
@@ -142,6 +143,10 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
         ESP_LOGE(TAG, "sync with sntp wait failed: %s", esp_err_to_name(err));
         goto done;
     }
+#else
+    /* Retry count is 0: skip SNTP wait entirely (non-blocking) */
+    ESP_LOGI(TAG, "SNTP sync disabled (retry=0), skipping time wait");
+#endif
 
     err = cap_system_format_current_time(output, output_size);
     if (err != ESP_OK) {

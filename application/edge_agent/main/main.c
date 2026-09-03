@@ -341,6 +341,7 @@ void app_main(void)
     init_timezone(app_config_get_timezone(s_config)); // no need to check error
     ESP_ERROR_CHECK(esp_board_manager_init());
     board_post_init_diagnostics();
+    ESP_LOGI(TAG, "===== HARDWARE DIAGNOSTIC COMPLETE (before any network start) =====");
     ESP_ERROR_CHECK(app_fs_init());
 
     /* Publish the resolved storage roots so any component can compose paths
