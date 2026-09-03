@@ -329,6 +329,8 @@ void app_main(void)
     app_config_to_claw(s_config, s_claw_config);
     init_timezone(app_config_get_timezone(s_config)); // no need to check error
     ESP_ERROR_CHECK(esp_board_manager_init());
+    /* Board-specific post-init diagnostics: AD35-S3 LCD interface info */
+    board_post_init_diagnostics();
     ESP_ERROR_CHECK(app_fs_init());
 
     /* Publish the resolved storage roots so any component can compose paths
