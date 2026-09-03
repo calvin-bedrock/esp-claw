@@ -153,6 +153,7 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
     esp_netif_sntp_deinit();
     return err;
 #endif
+}
 
 static bool cap_system_time_network_ready(void)
 {
@@ -179,8 +180,10 @@ static void cap_system_time_sync_service_task(void *arg)
     while (s_time_service.running) {
         bool time_valid;
         uint32_t delay_ms;
+        bool network_ready;
 
-        if (!cap_system_time_network_ready()) {
+        network_ready = cap_system_time_network_ready();
+        if (!network_ready) {
             delay_ms = s_time_service.config.disconnected_retry_ms;
             vTaskDelay(pdMS_TO_TICKS(delay_ms));
             continue;
