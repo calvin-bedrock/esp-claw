@@ -79,7 +79,7 @@ static void log_i2c_scan(i2c_master_bus_handle_t i2c_handle)
 {
     ESP_LOGW(TAG, "====== AD35-S3 HARDWARE DIAGNOSTIC START ======");
     ESP_LOGW(TAG, "I2C master bus handle: %p (GPIO6=SDA / GPIO5=SCL per GTM ref)", (void*)i2c_handle);
-    ESP_LOGW(TAG, "Expected AW9523 address (7-bit): 0x59 (per moononournation PINS_AD35-S3.h)");
+    ESP_LOGW(TAG, "Expected AW9523 address (7-bit): 0x5B (per GTM aw9523.c init)");
     ESP_LOGW(TAG, "Expected FT5x06 address (7-bit): 0x38");
     ESP_LOGW(TAG, "Expected ES8311 codec (7-bit): 0x18");
     bool found = false;
@@ -241,4 +241,12 @@ CUSTOM_DEVICE_IMPLEMENT(display_lcd, display_lcd_init, display_lcd_deinit);
 
 void board_post_init_diagnostics(void)
 {
+    /* Direct diagnostic print - does not depend on board manager i2c_master init */
     ESP_LOGI(TAG, "===== AD35-S3 HARDWARE DIAGNOSTIC START ======");
+    ESP_LOGI(TAG, "Expected AW9523 (7-bit): 0x59 (per moononournation PINS_AD35-S3.h, corrected from 0x5B)");
+    ESP_LOGI(TAG, "Expected FT5x06 (7-bit): 0x38  |  Expected ES8311: 0x18");
+    ESP_LOGI(TAG, "LCD pins (8080 parallel): D0=9 D1=4 D2=3 D3=8 D4=18 D5=17 D6=16 D7=15 RS=45 WR=10");
+    ESP_LOGI(TAG, "I2C SDA=6 SCL=5  |  AW9523 addr: 0x59  |  LCD RST via AW9523 pin 14");
+    ESP_LOGI(TAG, "===== AD35-S3 HARDWARE DIAGNOSTIC END ======");
+    ESP_LOGI(TAG, "NOTE: Full I2C RESPONDER scan output may be truncated above (board manager init-dependent)");
+}
