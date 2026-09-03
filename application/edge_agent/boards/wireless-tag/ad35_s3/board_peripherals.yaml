@@ -1,0 +1,37 @@
+version: 1.0.0
+peripherals:
+  # Shared by AW9523 GPIO expander, ES8311 codec, and FT5x06 touch controller.
+  - name: i2c_master
+    type: i2c
+    role: master
+    config:
+      port: 0
+      pins:
+        sda: 6
+        scl: 5
+
+  - name: i2s_audio_out
+    type: i2s
+    role: master
+    format: std-out
+    config: &i2s0_config
+      port: 0
+      sample_rate_hz: 48000
+      mclk_multiple: 256
+      data_bit_width: 16
+      slot_bit_width: I2S_SLOT_BIT_WIDTH_AUTO
+      slot_mode: I2S_SLOT_MODE_STEREO
+      slot_mask: I2S_STD_SLOT_BOTH
+      ws_width: 16
+      pins:
+        mclk: 41
+        bclk: 21
+        ws: 14
+        dout: 12
+        din: 13
+
+  - name: i2s_audio_in
+    type: i2s
+    role: master
+    format: std-in
+    config: *i2s0_config

@@ -1,0 +1,46 @@
+name: Build AD35-S3 firmware
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ESP-IDF v5.5 — AD35-S3
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install board-manager helper
+        run: pip install --disable-pip-version-check esp-bmgr-assist
+
+      - name: Generate AD35-S3 board support
+        working-directory: application/edge_agent
+        run: idf.py bmgr -c ./boards/wireless-tag -b ad35_s3
+
+      - name: Build firmware
+        working-directory: application/edge_agent
+        run: idf.py build
+
+      - name: Upload flashable firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-claw-ad35-s3-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            application/edge_agent/build/*.bin
+            application/edge_agent/build/bootloader/*.bin
+            application/edge_agent/build/partition_table/*.bin
+            application/edge_agent/build/flasher_args.json
+            application/edge_agent/build/flash_args
+            application/edge_agent/build/flash_project_args
+            application/edge_agent/build/sdkconfig

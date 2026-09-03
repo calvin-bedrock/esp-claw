@@ -1,0 +1,92 @@
+version: 1.0.0
+devices:
+  - name: gpio_expander
+    chip: aw9523b
+    type: gpio_expander
+    version: default
+    dependencies:
+      esp_io_expander_aw9523b:
+        override_path: "${BOARD_PATH}/components/esp_io_expander_aw9523b"
+        require: public
+    config:
+      max_pins: 16
+      output_io_mask: [8, 9, 10, 11, 13, 14]
+      output_io_level_mask: [0, 0, 0, 0, 0, 0]
+      input_io_mask: NULL
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0xb2]
+
+  - name: audio_dac
+    chip: es8311
+    depends_on: gpio_expander
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      dac_max_channel: 1
+      dac_channel_mask: "1"
+      dac_init_gain: 0
+      mclk_enabled: true
+    peripherals:
+      - name: i2s_audio_out
+      - name: i2c_master
+        address: 0x18
+        frequency: 400000
+
+  - name: audio_adc
+    chip: es8311
+    depends_on: gpio_expander
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: true
+      dac_enabled: false
+      adc_max_channel: 1
+      adc_channel_mask: "1"
+      adc_init_gain: 0
+      mclk_enabled: true
+    peripherals:
+      - name: i2s_audio_in
+      - name: i2c_master
+        address: 0x18
+        frequency: 400000
+
+  # ST7796 uses an 8-bit Intel 8080 bus, initialized in setup_device.c.
+  - name: display_lcd
+    chip: st7796
+    depends_on: gpio_expander
+    type: custom
+    version: default
+    dependencies:
+      espressif/esp_lcd_st7796: "^1.3.0"
+    config:
+      lcd_width: 480
+      lcd_height: 320
+
+  - name: lcd_touch
+    chip: ft5x06
+    type: lcd_touch
+    sub_type: i2c
+    version: default
+    dependencies:
+      esp_lcd_touch:
+        version: "*"
+        require: public
+      espressif/esp_lcd_touch_ft5x06: "^1.0.0"
+    config:
+      io_i2c_config:
+        lcd_cmd_bits: 8
+        scl_speed_hz: 400000
+      touch_config:
+        x_max: 480
+        y_max: 320
+        int_gpio_num: 7
+        flags:
+          swap_xy: true
+          mirror_x: true
+          mirror_y: false
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0x70]

@@ -1,0 +1,4 @@
+board: ad35_s3
+chip: esp32s3
+description: "Wireless-Tag AD35-S3 AI desktop-pet development board (ST7796 480x320 i80)"
+manufacturer: "Wireless-Tag"
