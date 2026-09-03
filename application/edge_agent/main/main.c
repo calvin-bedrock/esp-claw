@@ -338,7 +338,13 @@ void app_main(void)
 
     ESP_ERROR_CHECK(wifi_manager_init());
 
-    ESP_ERROR_CHECK(app_claw_ui_start());
+    /* The provisioning portal must remain available even if an optional board
+     * display has not initialized. A fatal abort here causes a USB CDC reset
+     * loop, which prevents browser serial terminals from attaching. */
+    esp_err_t ui_err = app_claw_ui_start();
+    if (ui_err != ESP_OK) {
+        ESP_LOGE(TAG, "System UI unavailable (%s); continuing with headless provisioning portal", esp_err_to_name(ui_err));
+    }
 
     ESP_ERROR_CHECK(http_server_init(&(http_server_config_t) {
         .storage_base_path = app_fs_storage_base_path(),
