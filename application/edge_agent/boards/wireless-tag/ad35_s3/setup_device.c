@@ -77,16 +77,21 @@ static const dev_display_lcd_config_t s_lcd_config = {
  * GPIO6/GPIO5 bus, so it cannot change pin routing or persistent state. */
 static void log_i2c_scan(i2c_master_bus_handle_t i2c_handle)
 {
+    ESP_LOGW(TAG, "====== AD35-S3 HARDWARE DIAGNOSTIC START ======");
+    ESP_LOGW(TAG, "I2C master bus handle: %p (GPIO6=SDA / GPIO5=SCL per GTM ref)", (void*)i2c_handle);
+    ESP_LOGW(TAG, "Expected AW9523 address (7-bit): 0x5B (per GTM aw9523.c init)");
+    ESP_LOGW(TAG, "Expected FT5x06 address (7-bit): 0x38");
+    ESP_LOGW(TAG, "Expected ES8311 codec (7-bit): 0x18");
     bool found = false;
-    ESP_LOGW(TAG, "AD35-S3 I2C diagnostic: scanning 7-bit addresses on GPIO6(SDA)/GPIO5(SCL)");
     for (uint8_t addr = 0x08; addr < 0x78; addr++) {
         if (i2c_master_probe(i2c_handle, addr, 20) == ESP_OK) {
-            ESP_LOGW(TAG, "AD35-S3 I2C diagnostic: responder at 7-bit address 0x%02x", addr);
+            ESP_LOGW(TAG, "I2C RESPONDER 7-bit 0x%02x (write=0x%02x read=0x%02x)", addr, addr<<1, (addr<<1)|1);
             found = true;
         }
     }
+    ESP_LOGW(TAG, "====== AD35-S3 HARDWARE DIAGNOSTIC END (found=%s) ======", found ? "YES" : "NO RESPONDERS");
     if (!found) {
-        ESP_LOGE(TAG, "AD35-S3 I2C diagnostic: no responders detected");
+        ESP_LOGE(TAG, "CRITICAL: No I2C devices found — verify SDA/SCL wiring and AW9523 address (try 0x5A/0x5B/0x5C/0x5D)");
     }
 }
 
