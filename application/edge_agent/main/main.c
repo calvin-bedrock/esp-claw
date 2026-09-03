@@ -38,11 +38,7 @@ static app_config_t *s_config;
 static app_claw_config_t *s_claw_config;
 static bool s_system_ui_started;
 
-/* Board profiles may provide diagnostic probes without coupling main.c to a
- * particular board implementation. The default is intentionally a no-op. */
-__attribute__((weak)) void board_post_init_diagnostics(void)
-{
-}
+/* Board profiles provide board_post_init_diagnostics() in setup_device.c */
 
 static esp_err_t app_allocate_runtime_state(void)
 {
