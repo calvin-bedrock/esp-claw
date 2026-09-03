@@ -20,7 +20,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Install board-manager helper
-        run: pip install --disable-pip-version-check esp-bmgr-assist
+        run: python -m pip install --disable-pip-version-check esp-bmgr-assist
 
       - name: Generate AD35-S3 board support
         working-directory: application/edge_agent
