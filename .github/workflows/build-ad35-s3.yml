@@ -23,7 +23,7 @@ jobs:
         run: |
           apt-get update
           apt-get install --yes python3-pip
-          python -m pip install --disable-pip-version-check esp-bmgr-assist
+          python -m pip install --break-system-packages --disable-pip-version-check esp-bmgr-assist
 
       - name: Generate AD35-S3 board support
         working-directory: application/edge_agent
