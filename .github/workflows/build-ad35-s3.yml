@@ -43,31 +43,31 @@ jobs:
       - name: Package single-file firmware
         working-directory: application/edge_agent/build
         env:
-          FIRMWARE_VERSION: "0.1.1"
+          FIRMWARE_VERSION: "0.1.2"
         run: |
           source /opt/esp/idf/export.sh
           esptool.py --chip esp32s3 merge_bin -o "merged-${FIRMWARE_VERSION}.bin" @flash_args
-          printf '%s\n' \
-            '# AD35-S3 flashing instructions' \
-            '' \
-            "Firmware version: ${FIRMWARE_VERSION} (commit: ${{ github.sha }})" \
-            'This artifact contains `merged-0.1.1.bin`: a complete 16 MB flash image.' \
-            'Write it at offset `0x0`; do not select an app-only offset such as `0x20000`.' \
-            '' \
-            '## esptool (recommended)' \
-            '' \
-            '```bash' \
-            'python -m esptool --chip esp32s3 --port <PORT> --baud 460800 write_flash 0x0 merged-0.1.1.bin' \
-            '```' \
-            '' \
-            'Replace `<PORT>` with the board serial port, for example `/dev/ttyACM0` on Linux or `COM3` on Windows.' \
-            'Hold BOOT while resetting if the board does not enter download mode.' \
-            '' \
-            '## Browser flasher' \
-            '' \
-            'Choose `merged-0.1.1.bin` and set its address/offset to `0x0`.' \
-            '' \
-            'After first boot, connect to the `esp-claw-XXXXXX` Wi-Fi network and open `http://192.168.4.1/` to configure Wi-Fi and the Edge Agent.' \
+          printf '%s\\n' \\
+            '# AD35-S3 flashing instructions' \\
+            '' \\
+            \"Firmware version: ${FIRMWARE_VERSION} (commit: ${{ github.sha }})\" \\
+            'This artifact contains `merged-0.1.2.bin`: a complete 16 MB flash image.' \\
+            'Write it at offset `0x0`; do not select an app-only offset such as `0x20000`.' \\
+            '' \\
+            '## esptool (recommended)' \\
+            '' \\
+            '```bash' \\
+            'python -m esptool --chip esp32s3 --port <PORT> --baud 460800 write_flash 0x0 merged-0.1.2.bin' \\
+            '```' \\
+            '' \\
+            'Replace `<PORT>` with the board serial port, for example `/dev/ttyACM0` on Linux or `COM3` on Windows.' \\
+            'Hold BOOT while resetting if the board does not enter download mode.' \\
+            '' \\
+            '## Browser flasher' \\
+            '' \\
+            'Choose `merged-0.1.2.bin` and set its address/offset to `0x0`.' \\
+            '' \\
+            'After first boot, connect to the `esp-claw-XXXXXX` Wi-Fi network and open `http://192.168.4.1/` to configure Wi-Fi and the Edge Agent.' \\
             > FLASH.md
 
       - name: Upload flashable firmware
@@ -77,7 +77,7 @@ jobs:
           if-no-files-found: error
           retention-days: 14
           path: |
-            application/edge_agent/build/merged-0.1.1.bin
+            application/edge_agent/build/merged-0.1.2.bin
             application/edge_agent/build/FLASH.md
             application/edge_agent/build/*.bin
             application/edge_agent/build/bootloader/*.bin
