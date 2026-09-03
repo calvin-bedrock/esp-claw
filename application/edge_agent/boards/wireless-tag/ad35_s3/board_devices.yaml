@@ -15,7 +15,7 @@ devices:
       input_io_mask: NULL
     peripherals:
       - name: i2c_master
-        i2c_addr: [0x5B, 0x5A, 0x5C, 0x5D]
+        i2c_addr: [0x5B]
 
   - name: audio_dac
     chip: es8311
