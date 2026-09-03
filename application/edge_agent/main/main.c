@@ -36,6 +36,13 @@ static const char *TAG = "app";
 
 static app_config_t *s_config;
 static app_claw_config_t *s_claw_config;
+static bool s_system_ui_started;
+
+/* Board profiles may provide diagnostic probes without coupling main.c to a
+ * particular board implementation. The default is intentionally a no-op. */
+__attribute__((weak)) void board_post_init_diagnostics(void)
+{
+}
 
 static esp_err_t app_allocate_runtime_state(void)
 {
@@ -88,6 +95,10 @@ static void on_wifi_state_changed(bool connected, void *user_ctx)
              status.ap_active,
              status.mode ? status.mode : "off",
              ap_ssid ? ap_ssid : "(none)");
+
+    if (!s_system_ui_started) {
+        return;
+    }
 
     esp_err_t err = app_claw_set_network_status(connected, ap_ssid);
     if (err != ESP_OK) {
@@ -329,6 +340,7 @@ void app_main(void)
     app_config_to_claw(s_config, s_claw_config);
     init_timezone(app_config_get_timezone(s_config)); // no need to check error
     ESP_ERROR_CHECK(esp_board_manager_init());
+    board_post_init_diagnostics();
     ESP_ERROR_CHECK(app_fs_init());
 
     /* Publish the resolved storage roots so any component can compose paths
@@ -342,6 +354,7 @@ void app_main(void)
      * display has not initialized. A fatal abort here causes a USB CDC reset
      * loop, which prevents browser serial terminals from attaching. */
     esp_err_t ui_err = app_claw_ui_start();
+    s_system_ui_started = (ui_err == ESP_OK);
     if (ui_err != ESP_OK) {
         ESP_LOGE(TAG, "System UI unavailable (%s); continuing with headless provisioning portal", esp_err_to_name(ui_err));
     }

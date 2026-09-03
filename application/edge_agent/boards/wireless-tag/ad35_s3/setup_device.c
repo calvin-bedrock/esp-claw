@@ -233,3 +233,15 @@ static int display_lcd_deinit(void *device_handle)
 }
 
 CUSTOM_DEVICE_IMPLEMENT(display_lcd, display_lcd_init, display_lcd_deinit);
+
+void board_post_init_diagnostics(void)
+{
+    void *i2c_bus = NULL;
+    esp_err_t ret = esp_board_periph_ref_handle("i2c_master", &i2c_bus);
+    if (ret != ESP_OK || i2c_bus == NULL) {
+        ESP_LOGE(TAG, "AD35-S3 I2C diagnostic: unable to acquire i2c_master: %s", esp_err_to_name(ret));
+        return;
+    }
+    log_i2c_scan((i2c_master_bus_handle_t)i2c_bus);
+    esp_board_periph_unref_handle("i2c_master");
+}
