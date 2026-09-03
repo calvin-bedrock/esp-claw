@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   build:
     name: ESP-IDF v5.5 — AD35-S3
@@ -21,17 +25,20 @@ jobs:
 
       - name: Install board-manager helper
         run: |
-          apt-get update
-          apt-get install --yes python3-pip
-          python -m pip install --break-system-packages --disable-pip-version-check esp-bmgr-assist
+          source /opt/esp/idf/export.sh
+          python -m pip install --disable-pip-version-check esp-bmgr-assist
 
       - name: Generate AD35-S3 board support
         working-directory: application/edge_agent
-        run: idf.py bmgr -c ./boards/wireless-tag -b ad35_s3
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py bmgr -c ./boards/wireless-tag -b ad35_s3
 
       - name: Build firmware
         working-directory: application/edge_agent
-        run: idf.py build
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py build
 
       - name: Upload flashable firmware
         uses: actions/upload-artifact@v4
