@@ -148,16 +148,11 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
 #else
     /* Retry count is 0: skip SNTP wait entirely (non-blocking) */
     ESP_LOGI(TAG, "SNTP sync disabled (retry=0), skipping time wait");
-#endif
-
-    err = cap_system_format_current_time(output, output_size);
-    if (err != ESP_OK) {
-        ESP_LOGE(TAG, "sync with sntp format failed: %s", esp_err_to_name(err));
-    }
-
+    /* Return success directly - time sync happens in background task */
+    err = ESP_OK;
     esp_netif_sntp_deinit();
     return err;
-}
+#endif
 
 static bool cap_system_time_network_ready(void)
 {
