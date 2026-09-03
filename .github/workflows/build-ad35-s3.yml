@@ -42,12 +42,15 @@ jobs:
 
       - name: Package single-file firmware
         working-directory: application/edge_agent/build
+        env:
+          FIRMWARE_VERSION: "0.1.0"
         run: |
           source /opt/esp/idf/export.sh
           esptool.py --chip esp32s3 merge_bin -o merged.bin @flash_args
           printf '%s\n' \
             '# AD35-S3 flashing instructions' \
             '' \
+            "Firmware version: ${FIRMWARE_VERSION} (commit: ${{ github.sha }})" \
             'This artifact contains `merged.bin`: a complete 16 MB flash image.' \
             'Write it at offset `0x0`; do not select an app-only offset such as `0x20000`.' \
             '' \
