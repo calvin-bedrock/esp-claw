@@ -40,7 +40,7 @@ static const char *TAG = "cap_system";
 #define CAP_SYSTEM_SNTP_PRIMARY_SERVER      "pool.ntp.org"
 #define CAP_SYSTEM_SNTP_SECONDARY_SERVER    "time.windows.com"
 #define CAP_SYSTEM_SNTP_WAIT_MS             3000
-#define CAP_SYSTEM_SNTP_RETRY_COUNT         15
+#define CAP_SYSTEM_SNTP_RETRY_COUNT         0
 #define CAP_SYSTEM_DEFAULT_DISCONNECTED_RETRY_MS 5000
 #define CAP_SYSTEM_DEFAULT_SYNC_RETRY_MS        30000
 
