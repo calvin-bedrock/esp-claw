@@ -72,12 +72,33 @@ static const dev_display_lcd_config_t s_lcd_config = {
     .bits_per_pixel = 16,
 };
 
+/* Temporary hardware diagnostic: only performs I2C address probes and logs
+ * responders. It is called after the board manager has created the configured
+ * GPIO6/GPIO5 bus, so it cannot change pin routing or persistent state. */
+static void log_i2c_scan(i2c_master_bus_handle_t i2c_handle)
+{
+    bool found = false;
+    ESP_LOGW(TAG, "AD35-S3 I2C diagnostic: scanning 7-bit addresses on GPIO6(SDA)/GPIO5(SCL)");
+    for (uint8_t addr = 0x08; addr < 0x78; addr++) {
+        if (i2c_master_probe(i2c_handle, addr, 20) == ESP_OK) {
+            ESP_LOGW(TAG, "AD35-S3 I2C diagnostic: responder at 7-bit address 0x%02x", addr);
+            found = true;
+        }
+    }
+    if (!found) {
+        ESP_LOGE(TAG, "AD35-S3 I2C diagnostic: no responders detected");
+    }
+}
+
 esp_err_t io_expander_factory_entry_t(i2c_master_bus_handle_t i2c_handle,
                                        const uint16_t dev_addr,
                                        esp_io_expander_handle_t *handle_ret)
 {
+    ESP_LOGW(TAG, "AD35-S3 I2C diagnostic: board manager passed expander address 0x%02x", dev_addr);
     esp_err_t ret = esp_io_expander_new_aw9523b(i2c_handle, dev_addr, handle_ret);
     if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "AD35-S3 I2C diagnostic: AW9523B initialization failed: %s", esp_err_to_name(ret));
+        log_i2c_scan(i2c_handle);
         return ret;
     }
 
