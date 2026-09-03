@@ -109,8 +109,6 @@ static esp_err_t cap_system_format_current_time(char *output, size_t output_size
 static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
 {
     esp_err_t err = ESP_OK;
-    esp_err_t wait_err = ESP_OK;
-    int retry = 0;
 #if CONFIG_LWIP_SNTP_MAX_SERVERS > 1
     esp_sntp_config_t config = ESP_NETIF_SNTP_DEFAULT_CONFIG_MULTIPLE(
         2,
@@ -129,19 +127,23 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
     err = esp_netif_sntp_init(&config);
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "sync with sntp init failed: %s", esp_err_to_name(err));
+        esp_netif_sntp_deinit();
         return err;
     }
 
 #if CAP_SYSTEM_SNTP_RETRY_COUNT > 0
+    int retry = 0;
+    esp_err_t wait_err = ESP_OK;
+
     while ((wait_err = esp_netif_sntp_sync_wait(pdMS_TO_TICKS(CAP_SYSTEM_SNTP_WAIT_MS))) == ESP_ERR_TIMEOUT &&
            ++retry < CAP_SYSTEM_SNTP_RETRY_COUNT) {
         ESP_LOGI(TAG, "Waiting for system time to be set... (%d/%d)", retry, CAP_SYSTEM_SNTP_RETRY_COUNT);
     }
 
     if (wait_err != ESP_OK) {
-        err = wait_err;
-        ESP_LOGE(TAG, "sync with sntp wait failed: %s", esp_err_to_name(err));
-        goto done;
+        ESP_LOGE(TAG, "sync with sntp wait failed: %s", esp_err_to_name(wait_err));
+        esp_netif_sntp_deinit();
+        return wait_err;
     }
 #else
     /* Retry count is 0: skip SNTP wait entirely (non-blocking) */
@@ -153,7 +155,6 @@ static esp_err_t cap_system_sync_with_sntp(char *output, size_t output_size)
         ESP_LOGE(TAG, "sync with sntp format failed: %s", esp_err_to_name(err));
     }
 
-done:
     esp_netif_sntp_deinit();
     return err;
 }
