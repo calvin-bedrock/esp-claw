@@ -16,6 +16,7 @@
 #include "esp_lcd_panel_io.h"
 #include "esp_lcd_panel_ops.h"
 #include "esp_lcd_st7796.h"
+#include "esp_lcd_touch_ft5x06.h"
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -100,6 +101,17 @@ esp_err_t io_expander_factory_entry_t(i2c_master_bus_handle_t i2c_handle,
     ESP_RETURN_ON_ERROR(esp_io_expander_set_level(*handle_ret, 1U << AW9523_PIN_ES8311_ENABLE, 1), TAG,
                         "AW9523B ES8311 enable failed");
     return ESP_OK;
+}
+
+esp_err_t lcd_touch_factory_entry_t(esp_lcd_panel_io_handle_t io,
+                                      const esp_lcd_touch_config_t *touch_dev_config,
+                                      esp_lcd_touch_handle_t *ret_touch)
+{
+    esp_err_t ret = esp_lcd_touch_new_i2c_ft5x06(io, touch_dev_config, ret_touch);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to create FT5x06 touch driver: %s", esp_err_to_name(ret));
+    }
+    return ret;
 }
 
 static void cleanup_display_lcd(esp_lcd_panel_handle_t panel_handle,
