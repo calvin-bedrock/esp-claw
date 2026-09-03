@@ -79,7 +79,7 @@ static void log_i2c_scan(i2c_master_bus_handle_t i2c_handle)
 {
     ESP_LOGW(TAG, "====== AD35-S3 HARDWARE DIAGNOSTIC START ======");
     ESP_LOGW(TAG, "I2C master bus handle: %p (GPIO6=SDA / GPIO5=SCL per GTM ref)", (void*)i2c_handle);
-    ESP_LOGW(TAG, "Expected AW9523 address (7-bit): 0x5B (per GTM aw9523.c init)");
+    ESP_LOGW(TAG, "Expected AW9523 address (7-bit): 0x59 (per moononournation PINS_AD35-S3.h)");
     ESP_LOGW(TAG, "Expected FT5x06 address (7-bit): 0x38");
     ESP_LOGW(TAG, "Expected ES8311 codec (7-bit): 0x18");
     bool found = false;
