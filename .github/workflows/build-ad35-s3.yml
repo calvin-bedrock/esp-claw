@@ -1,0 +1,68 @@
+name: Build AD35-S3 firmware
+
+on:
+  push:
+    branches: ["feat/add-ad35-s3"]
+  pull_request:
+    branches: ["master"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: ESP-IDF v5.5 — AD35-S3
+    runs-on: ubuntu-latest
+    container: espressif/idf:release-v5.5
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install board-manager helper
+        run: |
+          source /opt/esp/idf/export.sh
+          python -m pip install --disable-pip-version-check esp-bmgr-assist
+
+      - name: Generate AD35-S3 board support
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py bmgr -c ./boards/aiha -b ad35_s3
+
+      - name: Build firmware
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py build
+
+      - name: Package single-file firmware
+        working-directory: application/edge_agent/build
+        env:
+          FIRMWARE_VERSION: "0.1.2"
+        run: |
+          source /opt/esp/idf/export.sh
+          esptool.py --chip esp32s3 merge_bin -o "merged-${FIRMWARE_VERSION}.bin" @flash_args
+          printf '%s\n' \
+            '# AD35-S3 flashing instructions' \
+            '' \
+            "Firmware version: ${FIRMWARE_VERSION}" \
+            'This artifact contains `merged-0.1.2.bin`' \
+            '' \
+            'See FLASH.md for details.' \
+            > FLASH.md
+
+      - name: Upload firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-claw-ad35-s3-${FIRMWARE_VERSION}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            application/edge_agent/build/merged-0.1.2.bin
+            application/edge_agent/build/FLASH.md
