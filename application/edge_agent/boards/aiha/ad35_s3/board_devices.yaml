@@ -1,0 +1,78 @@
+version: 1.0.0
+devices:
+  # AW9523 GPIO expander (controls LCD backlight/power/reset and audio codec)
+  - name: aw9523_gpio_expander
+    chip: aw9523b
+    type: gpio_expander
+    version: default
+    dependencies:
+      esp_io_expander_aw9523b:
+        require: public
+    config:
+      max_pins: 16
+      output_io_mask: [8, 9, 10, 11, 13, 14]
+      output_io_level_mask: [0, 0, 0, 0, 0, 0]
+      input_io_mask: NULL
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0x59]
+
+  # ST7796 LCD — 8-bit parallel (i80) interface, 480x320
+  # Implemented as custom device because i80 requires full init in setup_device.c
+  - name: display_lcd
+    chip: st7796
+    type: custom
+    version: default
+    dependencies:
+      espressif/esp_lcd_st7796: ^1.3.0
+    config:
+      lcd_width: 480
+      lcd_height: 320
+
+  # FT5x06 Touch Controller (I2C)
+  - name: lcd_touch
+    chip: ft5x06
+    type: lcd_touch
+    sub_type: i2c
+    version: default
+    dependencies:
+      esp_lcd_touch:
+        version: "*"
+        require: public
+      espressif/esp_lcd_touch_ft5x06: ^1.0.0
+    config:
+      io_i2c_config:
+        lcd_cmd_bits: 8
+        scl_speed_hz: 400000
+      touch_config:
+        x_max: 480
+        y_max: 320
+        int_gpio_num: 7
+        flags:
+          swap_xy: true
+          mirror_x: true
+          mirror_y: false
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0x38]
+
+  # ES8311 Audio Codec (I2C)
+  - name: audio_codec
+    chip: es8311
+    type: audio_codec
+    version: default
+    dependencies:
+      espressif/esp_codec_dev: "*"
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      dac_max_channel: 1
+      dac_channel_mask: "1"
+      dac_init_gain: 0
+      mclk_enabled: true
+    peripherals:
+      - name: i2c_master
+        i2c_addr: [0x18]
+        frequency: 400000
+      - name: i2s_audio_out
+      - name: i2s_audio_in
