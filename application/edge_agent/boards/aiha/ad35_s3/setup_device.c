@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.11", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.12", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -391,10 +391,44 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
 
     /* Backlight was already enabled before the I80 bus was created — I2C is
      * unusable from here on (SCL/GPIO4 now belongs to the LCD data bus).
-     * Render the diagnostic frame and hold it so the panel state is
-     * observable before system_ui takes the display over. */
-    (void)render_boot_diagnostic(panel_handle);
-    vTaskDelay(pdMS_TO_TICKS(5000));
+     *
+     * VISUAL-ONLY DIAGNOSTIC: this board is flashed over the air, so serial
+     * logs are not always retrievable. Cycle full-screen solid colours so the
+     * pixel path can be judged by eye alone:
+     *   RED -> GREEN -> BLUE -> WHITE, 2 s each, then the text diag frame.
+     * If the panel visibly changes colour, the I80 pixel path works and any
+     * remaining problem is colour order / content. If it stays uniformly dark
+     * for all 8 s, no pixel data is reaching the panel at all. */
+    {
+        const size_t px    = (size_t)LCD_H_RES * LCD_V_RES;
+        uint16_t *fb = heap_caps_malloc(px * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
+        if (fb != NULL) {
+            /* RGB565 primaries, byte-swapped to match .flags.swap_color_bytes */
+            const uint16_t cycle[] = {
+                0x00F8, /* red   (0xF800 swapped) */
+                0xE007, /* green (0x07E0 swapped) */
+                0x1F00, /* blue  (0x001F swapped) */
+                0xFFFF, /* white */
+            };
+            for (size_t c = 0; c < sizeof(cycle) / sizeof(cycle[0]); ++c) {
+                for (size_t i = 0; i < px; ++i) {
+                    fb[i] = cycle[c];
+                }
+                esp_err_t e = esp_lcd_panel_draw_bitmap(panel_handle, 0, 0,
+                                                        LCD_H_RES, LCD_V_RES, fb);
+                ESP_LOGI(TAG, "colour cycle [%zu] 0x%04X -> %s",
+                         c, cycle[c], esp_err_to_name(e));
+                vTaskDelay(pdMS_TO_TICKS(2000));
+            }
+            heap_caps_free(fb);
+        } else {
+            ESP_LOGE(TAG, "colour cycle: framebuffer alloc failed");
+        }
+
+        /* Then the text diagnostic frame, held so system_ui cannot cover it. */
+        (void)render_boot_diagnostic(panel_handle);
+        vTaskDelay(pdMS_TO_TICKS(5000));
+    }
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));
