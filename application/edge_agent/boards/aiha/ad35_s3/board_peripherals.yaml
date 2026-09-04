@@ -12,12 +12,8 @@ peripherals:
 
   - name: aw9523_gpio_expander
     type: gpio_expander
-    chip: aw9523b
     config:
       max_pins: 16
       output_io_mask: [8, 9, 10, 11, 13, 14]
       output_io_level_mask: [0, 0, 0, 0, 0, 0]
-      input_io_mask: NULL
-    peripherals:
-      - name: i2c_master
-        i2c_addr: [0x59]
+      input_io_mask: null
