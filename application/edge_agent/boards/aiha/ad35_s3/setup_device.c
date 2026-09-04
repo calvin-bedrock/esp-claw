@@ -11,7 +11,7 @@
 #include <esp_board_manager_includes.h>
 #include <esp_check.h>
 #include <esp_io_expander.h>
-#include <esp_io_expander_aw9523b.h>
+#include <esp_io_expander.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_lcd_panel_ops.h>
 #include <esp_lcd_panel_st7796.h>
