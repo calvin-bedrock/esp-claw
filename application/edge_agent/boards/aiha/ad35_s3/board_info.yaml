@@ -1,0 +1,4 @@
+board: ad35_s3
+chip: esp32s3
+description: "AIHA AD35-S3 ESP32-S3 Development Board (ST7796 480x320 I80 LCD)"
+manufacturer: "AIHA"
