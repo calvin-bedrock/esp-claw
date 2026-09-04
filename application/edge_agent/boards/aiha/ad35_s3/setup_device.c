@@ -28,20 +28,31 @@ static const char *TAG = "ad35_s3";
 #define AW9523_PIN_LCD_LED_3 11
 #define AW9523_PIN_LCD_RESET 14
 
+/* Pin assignments below are taken from the board schematic
+ * (AD35-S3.kicad_sch, "8Bit 8080" LCD sheet) and confirmed on hardware with a
+ * standalone Arduino_GFX build.
+ *
+ * Do NOT copy these from the vendor's PINS_AD35-S3.h: that header has D1..D7
+ * shifted by one position and lists I2C as SDA=6/SCL=5, which prevents the
+ * AW9523 from ever being addressed. With a wrong D-line map every command and
+ * pixel byte reaches the ST7796 corrupted, while the write-only I80 bus keeps
+ * returning ESP_OK. */
 #define LCD_PIN_DC 45
 #define LCD_PIN_WR 10
 #define LCD_PIN_D0 9
-#define LCD_PIN_D1 4
-#define LCD_PIN_D2 3
-#define LCD_PIN_D3 8
-#define LCD_PIN_D4 18
-#define LCD_PIN_D5 17
-#define LCD_PIN_D6 16
-#define LCD_PIN_D7 15
+#define LCD_PIN_D1 3
+#define LCD_PIN_D2 8
+#define LCD_PIN_D3 18
+#define LCD_PIN_D4 17
+#define LCD_PIN_D5 16
+#define LCD_PIN_D6 15
+#define LCD_PIN_D7 7
 
 #define LCD_H_RES 480
 #define LCD_V_RES 320
-#define LCD_PIXEL_CLK_HZ (10 * 1000 * 1000)
+/* 40 MHz is the rate the vendor's own Arduino_GFX build runs this ST7796 at,
+ * and it was confirmed working on hardware with the schematic pin map. */
+#define LCD_PIXEL_CLK_HZ (40 * 1000 * 1000)
 /* Must be >= full framebuffer bytes (480*320*2 = 307200) so a single
  * esp_lcd_panel_draw_bitmap(0,0,W,H,fb) call is accepted by the I80 driver.
  * With a smaller cap the driver returns ESP_ERR_INVALID_ARG with
@@ -259,7 +270,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.13", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.14", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -306,9 +317,11 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
              (unsigned)(bl_mask | rst_mask), esp_err_to_name(dir_ret));
 
     /* Backlight ON (LEDK = LED cathode, sink current to light the panel).
-     * Must happen before esp_lcd_new_i80_bus(): I2C SCL is GPIO 4, which is
-     * also LCD_PIN_D1 of the I80 bus. Once the bus is created GPIO 4 belongs
-     * to the LCD and all further AW9523 access fails. */
+     * Kept before esp_lcd_new_i80_bus() as a matter of sequencing hygiene.
+     * Historical note: an earlier revision mapped LCD_PIN_D1 to GPIO 4, which
+     * is also the I2C SCL line, so creating the I80 bus stole the pin from the
+     * I2C controller and broke every later AW9523 access. The schematic pin
+     * map has no such overlap. */
     esp_err_t bl_ret = esp_io_expander_set_level(*expander, bl_mask, 0);
     ESP_LOGI(TAG, "backlight ON (P8-P11 LOW): %s", esp_err_to_name(bl_ret));
 

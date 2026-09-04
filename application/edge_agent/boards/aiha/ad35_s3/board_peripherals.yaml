@@ -6,14 +6,16 @@ peripherals:
     config:
       port: 0
       pins:
-        # QM-Y1091 AD35-S3 variant: I2C is on SDA=5 / SCL=4 (verified by
-        # i2c_master_probe finding the AW9523 at 0x59). The moononournation
-        # reference uses SDA=6/SCL=5, but on this board those pins are dead
-        # (0.1.10 scanned 0 devices and the board failed to boot).
+        # AD35-S3: I2C is SDA=IO5 / SCL=IO4 per the board schematic
+        # (AD35-S3.kicad_sch), confirmed on hardware — the AW9523 ACKs at 0x59.
         #
-        # NOTE: GPIO 4 is also LCD_PIN_D1 of the ST7796 I80 bus. Once
-        # esp_lcd_new_i80_bus() claims it the I2C clock line stops working,
-        # so ALL AW9523 access must happen BEFORE the I80 bus is created.
-        # See display_lcd_init() in setup_device.c.
+        # The vendor header PINS_AD35-S3.h says SDA=6/SCL=5. That is WRONG for
+        # this board: 0.1.10 used it, scanned 0 devices, and failed to boot.
+        # Because the vendor's DEV_DEVICE_INIT() macro never checks the return
+        # value of aw.begin(), the failure was silent — backlight stayed off
+        # and the LCD_RST pulse never happened, yet display init reported OK.
+        #
+        # No conflict with the I80 data bus: the schematic data lines are
+        # DB0..DB7 = 9,3,8,18,17,16,15,7, none of which is 4 or 5.
         sda: 5
         scl: 4
