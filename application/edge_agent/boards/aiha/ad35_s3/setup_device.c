@@ -42,7 +42,11 @@ static const char *TAG = "ad35_s3";
 #define LCD_H_RES 480
 #define LCD_V_RES 320
 #define LCD_PIXEL_CLK_HZ (10 * 1000 * 1000)
-#define LCD_MAX_TRANSFER_BYTES (LCD_H_RES * 40 * sizeof(uint16_t))
+/* Must be >= full framebuffer bytes (480*320*2 = 307200) so a single
+ * esp_lcd_panel_draw_bitmap(0,0,W,H,fb) call is accepted by the I80 driver.
+ * With a smaller cap the driver returns ESP_ERR_INVALID_ARG with
+ * "color bytes too long, enlarge max_transfer_bytes". */
+#define LCD_MAX_TRANSFER_BYTES (LCD_H_RES * LCD_V_RES * sizeof(uint16_t))
 
 /* Built-in 8x8 ASCII font (public domain).
  * Each glyph is 8 bytes, LSB-first within each row. */
@@ -255,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.5", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.6", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
