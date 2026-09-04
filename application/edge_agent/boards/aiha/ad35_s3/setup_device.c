@@ -94,9 +94,9 @@ static int i2c_diagnostics_init(void *config, int cfg_size, void **device_handle
                         ret == ESP_OK ? ESP_FAIL : ret, TAG,
                         "I2C diagnostics could not get i2c_master");
 
-    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO6 SCL=GPIO5");
+    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO5 SCL=GPIO4");
     ESP_LOGI(TAG, "I2C idle levels: SDA=%d SCL=%d",
-             gpio_get_level(GPIO_NUM_6), gpio_get_level(GPIO_NUM_5));
+             gpio_get_level(GPIO_NUM_5), gpio_get_level(GPIO_NUM_4));
 
     unsigned int found = 0;
     i2c_master_bus_handle_t bus = (i2c_master_bus_handle_t)periph_handle;
@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.10", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.11", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -291,6 +291,30 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
                             *expander, 1U << AW9523_PIN_LCD_RESET, 1),
                         TAG, "LCD reset release failed");
     vTaskDelay(pdMS_TO_TICKS(120));
+
+    /* Turn the backlight on NOW, before esp_lcd_new_i80_bus() runs.
+     *
+     * CRITICAL ORDERING CONSTRAINT: I2C SCL is GPIO 4 on this board, which
+     * is also LCD_PIN_D1 of the ST7796 I80 parallel bus. The moment the I80
+     * bus is created, GPIO 4 is reassigned to the LCD and the I2C clock line
+     * dies — every subsequent AW9523 write fails with ESP_ERR_INVALID_STATE.
+     * That is exactly what happened in 0.1.5-0.1.9: the backlight writes were
+     * issued after panel init and always failed, so the panel stayed dark.
+     *
+     * Per the moononournation Dev_Device_Pins reference the LCD_LEDK pins are
+     * driven LOW to light the panel (LEDK = LED cathode, so sinking current
+     * turns the backlight on):
+     *   aw.pinMode(8..11, OUTPUT); aw.digitalWrite(8..11, LOW);
+     */
+    {
+        const uint32_t bl_mask =
+            (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
+            (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3);
+        esp_err_t d = esp_io_expander_set_dir(*expander, bl_mask, IO_EXPANDER_OUTPUT);
+        esp_err_t l = esp_io_expander_set_level(*expander, bl_mask, 0);
+        ESP_LOGI(TAG, "backlight ON before I80 bus (P8-P11 OUTPUT+LOW): dir=%s level=%s",
+                 esp_err_to_name(d), esp_err_to_name(l));
+    }
 
     esp_lcd_i80_bus_config_t bus_cfg = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
@@ -365,29 +389,12 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Enable backlight. Per the moononournation Dev_Device_Pins reference
-     * the AW9523 LCD_LEDK pins are driven LOW to light the panel:
-     *   aw.pinMode(8..11, OUTPUT); aw.digitalWrite(8..11, LOW);
-     * "LEDK" = LED cathode, so sinking current turns the backlight on.
-     *
-     * This only works now that I2C uses SDA=6/SCL=5. Previously SCL was on
-     * GPIO 4, which is also LCD_PIN_D1 of the I80 bus — creating the I80 bus
-     * stole the clock line and every AW9523 write here failed. */
-    {
-        const uint32_t bl_mask =
-            (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
-            (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3);
-
-        esp_err_t d = esp_io_expander_set_dir(*expander, bl_mask, IO_EXPANDER_OUTPUT);
-        esp_err_t l = esp_io_expander_set_level(*expander, bl_mask, 0);
-        ESP_LOGI(TAG, "backlight ON (P8-P11 OUTPUT+LOW): set_dir=%s set_level=%s",
-                 esp_err_to_name(d), esp_err_to_name(l));
-
-        /* Render the diagnostic frame and hold it briefly so the panel state
-         * is observable before system_ui takes the display over. */
-        (void)render_boot_diagnostic(panel_handle);
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
+    /* Backlight was already enabled before the I80 bus was created — I2C is
+     * unusable from here on (SCL/GPIO4 now belongs to the LCD data bus).
+     * Render the diagnostic frame and hold it so the panel state is
+     * observable before system_ui takes the display over. */
+    (void)render_boot_diagnostic(panel_handle);
+    vTaskDelay(pdMS_TO_TICKS(5000));
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));

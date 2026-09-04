@@ -6,11 +6,14 @@ peripherals:
     config:
       port: 0
       pins:
-        # AD35-S3 I2C pins per moononournation Dev_Device_Pins reference:
-        #   Wire.begin(6 /* SDA */, 5 /* SCL */)
-        # Earlier revisions used SDA=5/SCL=4, but GPIO 4 is LCD_PIN_D1 on the
-        # I80 parallel bus. Once esp_lcd_new_i80_bus() claimed GPIO 4 the I2C
-        # clock line died, so every AW9523 write after display init failed
-        # with ESP_ERR_INVALID_STATE (backlight could never be enabled).
-        sda: 6
-        scl: 5
+        # QM-Y1091 AD35-S3 variant: I2C is on SDA=5 / SCL=4 (verified by
+        # i2c_master_probe finding the AW9523 at 0x59). The moononournation
+        # reference uses SDA=6/SCL=5, but on this board those pins are dead
+        # (0.1.10 scanned 0 devices and the board failed to boot).
+        #
+        # NOTE: GPIO 4 is also LCD_PIN_D1 of the ST7796 I80 bus. Once
+        # esp_lcd_new_i80_bus() claims it the I2C clock line stops working,
+        # so ALL AW9523 access must happen BEFORE the I80 bus is created.
+        # See display_lcd_init() in setup_device.c.
+        sda: 5
+        scl: 4
