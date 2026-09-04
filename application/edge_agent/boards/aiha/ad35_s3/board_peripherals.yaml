@@ -1,6 +1,6 @@
 version: 1.0.0
+# Peripherals Configuration
 peripherals:
-  # Shared by AW9523 GPIO expander, ES8311 codec, and FT5x06 touch controller.
   - name: i2c_master
     type: i2c
     role: master
@@ -9,11 +9,3 @@ peripherals:
       pins:
         sda: 6
         scl: 5
-
-  - name: aw9523_gpio_expander
-    type: gpio_expander
-    config:
-      max_pins: 16
-      output_io_mask: [8, 9, 10, 11, 13, 14]
-      output_io_level_mask: [0, 0, 0, 0, 0, 0]
-      input_io_mask: null
