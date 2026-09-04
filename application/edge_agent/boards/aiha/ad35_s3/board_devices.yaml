@@ -16,7 +16,9 @@ devices:
       input_io_mask: null
     peripherals:
       - name: i2c_master
-        i2c_addr: [0x59]
+        # Board Manager expects the 8-bit wire address and probes i2c_addr >> 1.
+        # AW9523's 7-bit address is 0x59, therefore this value must be 0xB2.
+        i2c_addr: [0xB2]
 
   # Board Manager has no generated I80 display path. setup_device.c registers
   # this custom device while preserving the standard display_lcd contract.

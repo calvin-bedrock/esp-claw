@@ -45,7 +45,9 @@ jobs:
         working-directory: application/edge_agent
         run: |
           source /opt/esp/idf/export.sh
-          idf.py build
+          idf.py -D PROJECT_VER="${FIRMWARE_VERSION}" build
+          python -m esptool image_info build/edge_agent.bin | tee build/image-info.txt
+          grep -F "Project version: ${FIRMWARE_VERSION}" build/image-info.txt
 
       - name: Create versioned merged firmware
         working-directory: application/edge_agent
