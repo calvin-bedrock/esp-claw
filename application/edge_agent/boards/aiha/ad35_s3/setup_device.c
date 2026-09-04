@@ -131,7 +131,7 @@ static const dev_display_lcd_config_t s_lcd_config = {
     .mirror_x = 1,
     .mirror_y = 0,
     .need_reset = 0,
-    .invert_color = 1,
+    .invert_color = 0,
     .rgb_ele_order = LCD_RGB_ELEMENT_ORDER_RGB,
     .data_endian = LCD_RGB_DATA_ENDIAN_BIG,
     .bits_per_pixel = 16,
@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.8", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.9", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -351,13 +351,12 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         ret = esp_lcd_panel_mirror(panel_handle, true, false);
     }
     if (ret == ESP_OK) {
-        /* AD35-S3 uses an IPS variant of ST7796 (per moononournation
-         * Dev_Device_Pins reference). IPS panels require CMD_INVON so the
-         * pixels display in their intended polarity — without this, whites
-         * appear near-black and text is invisible even when drawn. */
-        ret = esp_lcd_panel_invert_color(panel_handle, true);
-    }
-    if (ret == ESP_OK) {
+        /* Note: earlier revisions called esp_lcd_panel_invert_color(true)
+         * based on the moononournation Dev_Device_Pins reference marking
+         * this panel as IPS. That was wrong — Arduino_GFX's "IPS=true"
+         * flag is a software colorspace tweak, not INVON. Sending INVON
+         * here turns the whole panel dark and every rendered pixel is
+         * invisible against the black background. Leave native polarity. */
         ret = esp_lcd_panel_disp_on_off(panel_handle, true);
     }
     if (ret != ESP_OK) {
