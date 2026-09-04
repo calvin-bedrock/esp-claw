@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.12", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.13", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -282,39 +282,44 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
     ESP_RETURN_ON_ERROR(esp_board_device_get_handle("gpio_expander", (void **)&expander),
                         TAG, "AW9523 handle unavailable");
 
-    /* Assert LCD RESET low, then release. */
-    ESP_RETURN_ON_ERROR(esp_io_expander_set_level(
-                            *expander, 1U << AW9523_PIN_LCD_RESET, 0),
-                        TAG, "LCD reset assert failed");
-    vTaskDelay(pdMS_TO_TICKS(20));
-    ESP_RETURN_ON_ERROR(esp_io_expander_set_level(
-                            *expander, 1U << AW9523_PIN_LCD_RESET, 1),
-                        TAG, "LCD reset release failed");
-    vTaskDelay(pdMS_TO_TICKS(120));
-
-    /* Turn the backlight on NOW, before esp_lcd_new_i80_bus() runs.
+    /* Configure the AW9523 pins we drive as OUTPUT *before* touching them.
      *
-     * CRITICAL ORDERING CONSTRAINT: I2C SCL is GPIO 4 on this board, which
-     * is also LCD_PIN_D1 of the ST7796 I80 parallel bus. The moment the I80
-     * bus is created, GPIO 4 is reassigned to the LCD and the I2C clock line
-     * dies — every subsequent AW9523 write fails with ESP_ERR_INVALID_STATE.
-     * That is exactly what happened in 0.1.5-0.1.9: the backlight writes were
-     * issued after panel init and always failed, so the panel stayed dark.
+     * ROOT CAUSE of the "driver returns ESP_OK but the panel never changes"
+     * symptom: AW9523 pins power up as INPUTS. Earlier revisions called
+     * esp_io_expander_set_level() on the reset pin without ever setting its
+     * direction, so LCD_RST stayed floating and the ST7796 was never actually
+     * reset. An unreset ST7796 ignores every command and pixel write, while
+     * the ESP-side I80 driver happily reports success — exactly what we saw.
      *
-     * Per the moononournation Dev_Device_Pins reference the LCD_LEDK pins are
-     * driven LOW to light the panel (LEDK = LED cathode, so sinking current
-     * turns the backlight on):
-     *   aw.pinMode(8..11, OUTPUT); aw.digitalWrite(8..11, LOW);
+     * The reference does this explicitly:
+     *   aw.pinMode(8..11, OUTPUT);  // LCD_LEDK
+     *   aw.pinMode(14, OUTPUT);     // LCD_RST
      */
-    {
-        const uint32_t bl_mask =
-            (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
-            (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3);
-        esp_err_t d = esp_io_expander_set_dir(*expander, bl_mask, IO_EXPANDER_OUTPUT);
-        esp_err_t l = esp_io_expander_set_level(*expander, bl_mask, 0);
-        ESP_LOGI(TAG, "backlight ON before I80 bus (P8-P11 OUTPUT+LOW): dir=%s level=%s",
-                 esp_err_to_name(d), esp_err_to_name(l));
-    }
+    const uint32_t bl_mask =
+        (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
+        (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3);
+    const uint32_t rst_mask = 1U << AW9523_PIN_LCD_RESET;
+
+    esp_err_t dir_ret = esp_io_expander_set_dir(*expander, bl_mask | rst_mask,
+                                                IO_EXPANDER_OUTPUT);
+    ESP_LOGI(TAG, "AW9523 set_dir(OUTPUT) LEDK+RST mask=0x%04X -> %s",
+             (unsigned)(bl_mask | rst_mask), esp_err_to_name(dir_ret));
+
+    /* Backlight ON (LEDK = LED cathode, sink current to light the panel).
+     * Must happen before esp_lcd_new_i80_bus(): I2C SCL is GPIO 4, which is
+     * also LCD_PIN_D1 of the I80 bus. Once the bus is created GPIO 4 belongs
+     * to the LCD and all further AW9523 access fails. */
+    esp_err_t bl_ret = esp_io_expander_set_level(*expander, bl_mask, 0);
+    ESP_LOGI(TAG, "backlight ON (P8-P11 LOW): %s", esp_err_to_name(bl_ret));
+
+    /* Reset pulse, 200 ms low as in the reference (we previously used 20 ms). */
+    ESP_RETURN_ON_ERROR(esp_io_expander_set_level(*expander, rst_mask, 0),
+                        TAG, "LCD reset assert failed");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    ESP_RETURN_ON_ERROR(esp_io_expander_set_level(*expander, rst_mask, 1),
+                        TAG, "LCD reset release failed");
+    vTaskDelay(pdMS_TO_TICKS(200));
+    ESP_LOGI(TAG, "LCD reset pulse complete (P14 OUTPUT, 200ms low)");
 
     esp_lcd_i80_bus_config_t bus_cfg = {
         .clk_src = LCD_CLK_SRC_DEFAULT,
@@ -389,46 +394,12 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Backlight was already enabled before the I80 bus was created — I2C is
-     * unusable from here on (SCL/GPIO4 now belongs to the LCD data bus).
-     *
-     * VISUAL-ONLY DIAGNOSTIC: this board is flashed over the air, so serial
-     * logs are not always retrievable. Cycle full-screen solid colours so the
-     * pixel path can be judged by eye alone:
-     *   RED -> GREEN -> BLUE -> WHITE, 2 s each, then the text diag frame.
-     * If the panel visibly changes colour, the I80 pixel path works and any
-     * remaining problem is colour order / content. If it stays uniformly dark
-     * for all 8 s, no pixel data is reaching the panel at all. */
-    {
-        const size_t px    = (size_t)LCD_H_RES * LCD_V_RES;
-        uint16_t *fb = heap_caps_malloc(px * sizeof(uint16_t), MALLOC_CAP_SPIRAM);
-        if (fb != NULL) {
-            /* RGB565 primaries, byte-swapped to match .flags.swap_color_bytes */
-            const uint16_t cycle[] = {
-                0x00F8, /* red   (0xF800 swapped) */
-                0xE007, /* green (0x07E0 swapped) */
-                0x1F00, /* blue  (0x001F swapped) */
-                0xFFFF, /* white */
-            };
-            for (size_t c = 0; c < sizeof(cycle) / sizeof(cycle[0]); ++c) {
-                for (size_t i = 0; i < px; ++i) {
-                    fb[i] = cycle[c];
-                }
-                esp_err_t e = esp_lcd_panel_draw_bitmap(panel_handle, 0, 0,
-                                                        LCD_H_RES, LCD_V_RES, fb);
-                ESP_LOGI(TAG, "colour cycle [%zu] 0x%04X -> %s",
-                         c, cycle[c], esp_err_to_name(e));
-                vTaskDelay(pdMS_TO_TICKS(2000));
-            }
-            heap_caps_free(fb);
-        } else {
-            ESP_LOGE(TAG, "colour cycle: framebuffer alloc failed");
-        }
-
-        /* Then the text diagnostic frame, held so system_ui cannot cover it. */
-        (void)render_boot_diagnostic(panel_handle);
-        vTaskDelay(pdMS_TO_TICKS(5000));
-    }
+    /* Visual diagnostic: draw the text frame and hold it long enough that
+     * system_ui cannot cover it before it is seen. The panel is now properly
+     * reset (P14 was configured as OUTPUT first), so pixel writes should
+     * actually reach the ST7796. */
+    (void)render_boot_diagnostic(panel_handle);
+    vTaskDelay(pdMS_TO_TICKS(10000));
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));
