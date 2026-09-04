@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.6", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.7", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -366,22 +366,68 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Enable backlight: AW9523 P8-P11 drive the LED cathodes.
-     * These pins boot LOW (LEDs off); pull them HIGH so the panel is lit. */
-    esp_err_t bl_ret = esp_io_expander_set_level(
-        *expander,
-        (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
-            (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3),
-        1);
-    if (bl_ret != ESP_OK) {
-        ESP_LOGW(TAG, "backlight enable failed: %s", esp_err_to_name(bl_ret));
-    } else {
-        ESP_LOGI(TAG, "backlight ON (AW9523 P8-P11 HIGH)");
-    }
+    /* Enable backlight: AW9523 P8-P11 drive the LED cathodes/anodes.
+     * Bypass esp_io_expander (whose set_level fails with INVALID_STATE on
+     * this board — likely because CONFIG_PORT1 dir bits are still inputs)
+     * and hit AW9523 registers directly via the shared i2c_master bus.
+     *   0x05 = CONFIG PORT1 (0=output, 1=input) -> 0x00 makes P8-P15 outputs
+     *   0x03 = OUTPUT PORT1  -> polarity we probe
+     * We don't know panel polarity (LED anode-on-VCC vs cathode-on-VCC)
+     * from the schematic, so cycle three states and hold each 3 s while
+     * the boot diag frame is on screen. One of them will light the panel. */
+    {
+        void *i2c_periph = NULL;
+        if (esp_board_periph_ref_handle("i2c_master", &i2c_periph) == ESP_OK &&
+                i2c_periph != NULL) {
+            i2c_master_bus_handle_t bus = (i2c_master_bus_handle_t)i2c_periph;
+            i2c_device_config_t dev_cfg = {
+                .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+                .device_address  = 0x59,
+                .scl_speed_hz    = 100 * 1000,
+            };
+            i2c_master_dev_handle_t dev = NULL;
+            if (i2c_master_bus_add_device(bus, &dev_cfg, &dev) == ESP_OK && dev) {
+                uint8_t buf[2];
+                /* Make P8-P15 outputs. */
+                buf[0] = 0x05; buf[1] = 0x00;
+                esp_err_t e1 = i2c_master_transmit(dev, buf, 2, 100);
+                /* Force GPIO mode (not LED constant-current). */
+                buf[0] = 0x12; buf[1] = 0xFF;
+                esp_err_t e2 = i2c_master_transmit(dev, buf, 2, 100);
+                buf[0] = 0x13; buf[1] = 0xFF;
+                esp_err_t e3 = i2c_master_transmit(dev, buf, 2, 100);
+                ESP_LOGI(TAG, "AW9523 direct config: dir=%s ledmode0=%s ledmode1=%s",
+                         esp_err_to_name(e1), esp_err_to_name(e2), esp_err_to_name(e3));
 
-    /* Immediately render a boot diagnostic frame so we get visible proof of
-     * end-to-end panel operation before any higher-level UI runs. */
-    (void)render_boot_diagnostic(panel_handle);
+                /* Probe backlight polarity: three states, 3 s each, so the
+                 * boot diag frame stays visible long enough to see. */
+                const uint8_t bl_states[] = { 0x0F, 0xF0, 0x00 };
+                const char *bl_names[]    = { "P8-P11 HIGH", "P8-P11 LOW+P12-P15 HIGH", "all LOW" };
+                for (int i = 0; i < 3; ++i) {
+                    buf[0] = 0x03; buf[1] = bl_states[i];
+                    esp_err_t er = i2c_master_transmit(dev, buf, 2, 100);
+                    ESP_LOGI(TAG, "backlight probe [%d]: reg 0x03=0x%02X (%s) -> %s",
+                             i, bl_states[i], bl_names[i], esp_err_to_name(er));
+                    /* Re-render diag on top so if backlight fluctuates
+                     * with prev display init, the image is always fresh. */
+                    (void)render_boot_diagnostic(panel_handle);
+                    vTaskDelay(pdMS_TO_TICKS(3000));
+                }
+                /* Leave in whichever state produced the visible screen —
+                 * default to P8-P11 HIGH (Arduino ref pulls them HIGH via
+                 * pinMode+LOW because AW9523 LED mode inverts, but in GPIO
+                 * mode HIGH sources current). */
+                buf[0] = 0x03; buf[1] = 0x0F;
+                (void)i2c_master_transmit(dev, buf, 2, 100);
+                i2c_master_bus_rm_device(dev);
+            } else {
+                ESP_LOGE(TAG, "AW9523 direct add_device failed");
+            }
+            esp_board_periph_unref_handle("i2c_master");
+        } else {
+            ESP_LOGE(TAG, "AW9523 direct: i2c_master handle unavailable");
+        }
+    }
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));
