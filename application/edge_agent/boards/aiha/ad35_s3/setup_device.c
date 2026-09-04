@@ -94,9 +94,9 @@ static int i2c_diagnostics_init(void *config, int cfg_size, void **device_handle
                         ret == ESP_OK ? ESP_FAIL : ret, TAG,
                         "I2C diagnostics could not get i2c_master");
 
-    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO5 SCL=GPIO4");
+    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO6 SCL=GPIO5");
     ESP_LOGI(TAG, "I2C idle levels: SDA=%d SCL=%d",
-             gpio_get_level(GPIO_NUM_5), gpio_get_level(GPIO_NUM_4));
+             gpio_get_level(GPIO_NUM_6), gpio_get_level(GPIO_NUM_5));
 
     unsigned int found = 0;
     i2c_master_bus_handle_t bus = (i2c_master_bus_handle_t)periph_handle;
@@ -259,7 +259,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.9", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.10", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -365,53 +365,28 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Enable backlight: AW9523 P8-P11 drive the LCD LEDs. The expander was
-     * already registered by board_manager (esp_io_expander_new_aw9523b),
-     * so we MUST reuse that handle — creating a second i2c device at 0x59
-     * returns INVALID_STATE. The reason set_level was failing on 0.1.5/6
-     * is that the pins never had their direction configured as OUTPUT.
-     * Fix: set_dir(OUTPUT) then set_level(HIGH). */
+    /* Enable backlight. Per the moononournation Dev_Device_Pins reference
+     * the AW9523 LCD_LEDK pins are driven LOW to light the panel:
+     *   aw.pinMode(8..11, OUTPUT); aw.digitalWrite(8..11, LOW);
+     * "LEDK" = LED cathode, so sinking current turns the backlight on.
+     *
+     * This only works now that I2C uses SDA=6/SCL=5. Previously SCL was on
+     * GPIO 4, which is also LCD_PIN_D1 of the I80 bus — creating the I80 bus
+     * stole the clock line and every AW9523 write here failed. */
     {
         const uint32_t bl_mask =
             (1U << AW9523_PIN_LCD_LED_0) | (1U << AW9523_PIN_LCD_LED_1) |
             (1U << AW9523_PIN_LCD_LED_2) | (1U << AW9523_PIN_LCD_LED_3);
+
         esp_err_t d = esp_io_expander_set_dir(*expander, bl_mask, IO_EXPANDER_OUTPUT);
-        ESP_LOGI(TAG, "backlight set_dir(OUTPUT) mask=0x%03X -> %s",
-                 (unsigned)bl_mask, esp_err_to_name(d));
+        esp_err_t l = esp_io_expander_set_level(*expander, bl_mask, 0);
+        ESP_LOGI(TAG, "backlight ON (P8-P11 OUTPUT+LOW): set_dir=%s set_level=%s",
+                 esp_err_to_name(d), esp_err_to_name(l));
 
-        /* Also write CONFIG_PORT1 (0x05) directly as a belt-and-braces
-         * measure, in case the io_expander driver's dir cache disagrees
-         * with the chip. Bit=0 means output. Force P8-P15 all outputs. */
-        uint8_t cfg1 = 0x00;
-        esp_err_t c = esp_io_expander_aw9523b_write_reg(
-            *expander, 0x05, &cfg1, 1);
-        ESP_LOGI(TAG, "AW9523 CONFIG_PORT1 <- 0x00 direct: %s", esp_err_to_name(c));
-
-        /* Probe backlight polarity across three states, 3 s each, and
-         * re-render the diag frame between probes so it stays fresh. */
-        const uint32_t p8_p11  = bl_mask;                  /* 0x0F00 */
-        const uint32_t p12_p15 = 0xF000;                   /* 0xF000 */
-        struct { const char *name; uint32_t mask; uint8_t level; } probes[] = {
-            { "P8-P11 HIGH",     p8_p11,          1 },
-            { "P8-P11 LOW",      p8_p11,          0 },
-            { "P12-P15 HIGH",    p12_p15,         1 },
-        };
-        for (size_t i = 0; i < sizeof(probes)/sizeof(probes[0]); ++i) {
-            /* Widen mask to include both port groups so we set all we probe. */
-            esp_err_t d2 = esp_io_expander_set_dir(*expander,
-                                                   p8_p11 | p12_p15,
-                                                   IO_EXPANDER_OUTPUT);
-            esp_err_t r = esp_io_expander_set_level(*expander,
-                                                    probes[i].mask,
-                                                    probes[i].level);
-            ESP_LOGI(TAG, "backlight probe [%zu]: %s (mask=0x%03X lvl=%d) dir=%s set=%s",
-                     i, probes[i].name, (unsigned)probes[i].mask, probes[i].level,
-                     esp_err_to_name(d2), esp_err_to_name(r));
-            (void)render_boot_diagnostic(panel_handle);
-            vTaskDelay(pdMS_TO_TICKS(3000));
-        }
-        /* End state: all backlight pins HIGH. */
-        (void)esp_io_expander_set_level(*expander, p8_p11 | p12_p15, 1);
+        /* Render the diagnostic frame and hold it briefly so the panel state
+         * is observable before system_ui takes the display over. */
+        (void)render_boot_diagnostic(panel_handle);
+        vTaskDelay(pdMS_TO_TICKS(5000));
     }
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,

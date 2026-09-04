@@ -6,5 +6,11 @@ peripherals:
     config:
       port: 0
       pins:
-        sda: 5
-        scl: 4
+        # AD35-S3 I2C pins per moononournation Dev_Device_Pins reference:
+        #   Wire.begin(6 /* SDA */, 5 /* SCL */)
+        # Earlier revisions used SDA=5/SCL=4, but GPIO 4 is LCD_PIN_D1 on the
+        # I80 parallel bus. Once esp_lcd_new_i80_bus() claimed GPIO 4 the I2C
+        # clock line died, so every AW9523 write after display init failed
+        # with ESP_ERR_INVALID_STATE (backlight could never be enabled).
+        sda: 6
+        scl: 5
