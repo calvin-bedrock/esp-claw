@@ -15,6 +15,12 @@ idf.py build
 CI packages `merged-<FIRMWARE_VERSION>.bin` from the build's own `flash_args`,
 to be flashed at address `0x0`.
 
+## Status
+
+**Display bring-up verified on hardware.** The panel renders text and colour
+correctly at 480x320. Board boots, initializes the AW9523, resets the ST7796,
+and draws a boot splash showing the board name and firmware version.
+
 ## Verified pinout
 
 **Source of truth: the board schematic `AD35-S3.kicad_sch`.** Every value below

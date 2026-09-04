@@ -1,6 +1,10 @@
 version: 1.0.0
 devices:
-  # Bring-up diagnostic: scan the shared bus before AW9523 initialization.
+  # Boot-time I2C bus scan. Deliberately kept in the shipping profile: it is
+  # cheap, runs once, and is the single most useful diagnostic for this board.
+  # It is what identified the AW9523 at 0x59 and proved the vendor header's
+  # SDA=6/SCL=5 pins were wrong. Without it, a mis-wired I2C bus presents as a
+  # silently dead display rather than an obvious error. See README.md.
   - name: i2c_diagnostics
     chip: generic
     type: custom

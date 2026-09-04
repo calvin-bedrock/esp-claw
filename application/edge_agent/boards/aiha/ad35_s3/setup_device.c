@@ -270,7 +270,7 @@ static esp_err_t render_boot_diagnostic(esp_lcd_panel_handle_t panel)
     /* Big title: "AD35-S3 OK" — scale=6 → 48x48 per glyph. */
     draw_string_rgb565(fb, W, H, 40, 100, "AD35-S3 OK", 6, WHITE, BG, false);
     /* Version line: scale=3 → 24x24 per glyph. */
-    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.14", 3, YELLOW, BG, false);
+    draw_string_rgb565(fb, W, H, 40, 200, "FW 0.1.15", 3, YELLOW, BG, false);
 
     esp_err_t ret = esp_lcd_panel_draw_bitmap(panel, 0, 0, W, H, fb);
     if (ret != ESP_OK) {
@@ -407,12 +407,15 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Visual diagnostic: draw the text frame and hold it long enough that
-     * system_ui cannot cover it before it is seen. The panel is now properly
-     * reset (P14 was configured as OUTPUT first), so pixel writes should
-     * actually reach the ST7796. */
+    /* Draw a boot splash (board name + firmware version) and hand the panel
+     * over. Keep this brief: system_ui takes over immediately afterwards.
+     *
+     * The splash is deliberately textual rather than a colour pattern. Boards
+     * are commonly flashed over the air where serial output cannot be
+     * captured, so on-screen text identifying the build is the only reliable
+     * confirmation of which firmware is actually running. */
     (void)render_boot_diagnostic(panel_handle);
-    vTaskDelay(pdMS_TO_TICKS(10000));
+    vTaskDelay(pdMS_TO_TICKS(1500));
 
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));
