@@ -5,7 +5,8 @@ devices:
     type: gpio_expander
     version: default
     dependencies:
-      esp_io_expander_aw9523b:
+      espressif/esp_io_expander:
+        version: ^1.0.1
         require: public
     config:
       max_pins: 16
