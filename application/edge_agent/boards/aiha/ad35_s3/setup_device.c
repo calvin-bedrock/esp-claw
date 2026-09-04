@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "driver/gpio.h"
+#include "driver/i2c_master.h"
 #include "esp_board_manager_includes.h"
 #include "esp_check.h"
 #include "esp_io_expander_aw9523b.h"
@@ -44,6 +45,47 @@ static const char *TAG = "ad35_s3";
 
 static esp_lcd_i80_bus_handle_t s_i80_bus;
 static dev_display_lcd_handles_t s_lcd_handles;
+static uint8_t s_i2c_diagnostics_handle;
+
+static int i2c_diagnostics_init(void *config, int cfg_size, void **device_handle)
+{
+    (void)config;
+    (void)cfg_size;
+    ESP_RETURN_ON_FALSE(device_handle != NULL, ESP_ERR_INVALID_ARG, TAG,
+                        "I2C diagnostics device_handle is NULL");
+
+    void *periph_handle = NULL;
+    esp_err_t ret = esp_board_periph_ref_handle("i2c_master", &periph_handle);
+    ESP_RETURN_ON_FALSE(ret == ESP_OK && periph_handle != NULL,
+                        ret == ESP_OK ? ESP_FAIL : ret, TAG,
+                        "I2C diagnostics could not get i2c_master");
+
+    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO6 SCL=GPIO5");
+    ESP_LOGI(TAG, "I2C idle levels: SDA=%d SCL=%d",
+             gpio_get_level(GPIO_NUM_6), gpio_get_level(GPIO_NUM_5));
+
+    unsigned int found = 0;
+    i2c_master_bus_handle_t bus = (i2c_master_bus_handle_t)periph_handle;
+    for (uint16_t addr = 0x08; addr <= 0x77; ++addr) {
+        if (i2c_master_probe(bus, addr, 20) == ESP_OK) {
+            ESP_LOGI(TAG, "I2C ACK at 7-bit address 0x%02x", (unsigned int)addr);
+            ++found;
+        }
+    }
+    ESP_LOGI(TAG, "I2C scan complete: %u device(s)", found);
+
+    esp_board_periph_unref_handle("i2c_master");
+    *device_handle = &s_i2c_diagnostics_handle;
+    return ESP_OK;
+}
+
+static int i2c_diagnostics_deinit(void *device_handle)
+{
+    (void)device_handle;
+    return ESP_OK;
+}
+
+CUSTOM_DEVICE_IMPLEMENT(i2c_diagnostics, i2c_diagnostics_init, i2c_diagnostics_deinit);
 
 static const dev_display_lcd_config_t s_lcd_config = {
     .name = "display_lcd",

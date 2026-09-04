@@ -1,5 +1,13 @@
 version: 1.0.0
 devices:
+  # Bring-up diagnostic: scan the shared bus before AW9523 initialization.
+  - name: i2c_diagnostics
+    chip: generic
+    type: custom
+    version: default
+    peripherals:
+      - name: i2c_master
+
   # AW9523 controls the LCD backlight cathodes (P8-P11) and reset (P14).
   - name: gpio_expander
     chip: aw9523b
