@@ -7,7 +7,8 @@ ESP32-S3 board profile for the AD35-S3 with a 480x320 ST7796 LCD on an
 
 ```bash
 cd application/edge_agent
-idf.py gen-bmgr-config -c ./boards/aiha -b ad35_s3
+python -m pip install esp-bmgr-assist==0.8.3
+IDF_TARGET=esp32s3 idf.py bmgr -c ./boards/aiha -b ad35_s3
 idf.py build
 ```
 
