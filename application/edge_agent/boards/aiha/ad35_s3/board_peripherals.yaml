@@ -6,5 +6,5 @@ peripherals:
     config:
       port: 0
       pins:
-        sda: 6
-        scl: 5
+        sda: 5
+        scl: 4

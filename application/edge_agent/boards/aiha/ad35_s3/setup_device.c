@@ -60,9 +60,9 @@ static int i2c_diagnostics_init(void *config, int cfg_size, void **device_handle
                         ret == ESP_OK ? ESP_FAIL : ret, TAG,
                         "I2C diagnostics could not get i2c_master");
 
-    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO6 SCL=GPIO5");
+    ESP_LOGI(TAG, "I2C scan start: SDA=GPIO5 SCL=GPIO4");
     ESP_LOGI(TAG, "I2C idle levels: SDA=%d SCL=%d",
-             gpio_get_level(GPIO_NUM_6), gpio_get_level(GPIO_NUM_5));
+             gpio_get_level(GPIO_NUM_5), gpio_get_level(GPIO_NUM_4));
 
     unsigned int found = 0;
     i2c_master_bus_handle_t bus = (i2c_master_bus_handle_t)periph_handle;
