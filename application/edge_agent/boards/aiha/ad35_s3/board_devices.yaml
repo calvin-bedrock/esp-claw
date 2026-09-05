@@ -50,7 +50,7 @@ devices:
         int_gpio_num: 7
         flags:
           swap_xy: true
-          mirror_x: true
+          mirror_x: false
           mirror_y: false
     peripherals:
       - name: i2c_master
