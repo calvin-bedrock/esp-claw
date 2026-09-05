@@ -139,7 +139,7 @@ static const dev_display_lcd_config_t s_lcd_config = {
     .lcd_width = LCD_H_RES,
     .lcd_height = LCD_V_RES,
     .swap_xy = 1,
-    .mirror_x = 1,
+    .mirror_x = 0,
     .mirror_y = 0,
     .need_reset = 0,
     .invert_color = 0,
@@ -390,7 +390,7 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         ret = esp_lcd_panel_swap_xy(panel_handle, true);
     }
     if (ret == ESP_OK) {
-        ret = esp_lcd_panel_mirror(panel_handle, true, false);
+        ret = esp_lcd_panel_mirror(panel_handle, false, false);
     }
     if (ret == ESP_OK) {
         /* Note: earlier revisions called esp_lcd_panel_invert_color(true)
