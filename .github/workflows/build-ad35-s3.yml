@@ -1,0 +1,95 @@
+name: Build AD35-S3 Firmware
+
+on:
+  push:
+    branches:
+      - feat/add-ad35-s3-v2
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "application/edge_agent/boards/aiha/ad35_s3/**"
+      - ".github/workflows/build-ad35-s3.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:release-v5.5
+    defaults:
+      run:
+        shell: bash
+    env:
+      FIRMWARE_VERSION: "0.2.0"
+      BOARD_NAME: ad35_s3
+      BOARD_PATH: ./boards/aiha
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Install Board Manager helper
+        run: |
+          source /opt/esp/idf/export.sh
+          python -m pip install --disable-pip-version-check esp-bmgr-assist==0.8.3
+
+      - name: Generate Board Manager configuration
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          IDF_TARGET=esp32s3 idf.py bmgr -c "${BOARD_PATH}" -b "${BOARD_NAME}"
+          test -s components/gen_bmgr_codes/gen_board_metadata.yaml
+
+      - name: Build firmware
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          idf.py -D PROJECT_VER="${FIRMWARE_VERSION}" build
+          python -m esptool image_info --version 2 build/edge_agent.bin | tee build/image-info.txt
+          grep -E "App version:[[:space:]]+${FIRMWARE_VERSION}$" build/image-info.txt
+
+      - name: Create versioned merged firmware
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          cd build
+          python -m esptool --chip esp32s3 merge_bin \
+            -o "merged-${FIRMWARE_VERSION}.bin" @flash_args
+          test -s "merged-${FIRMWARE_VERSION}.bin"
+          python -m esptool image_info "merged-${FIRMWARE_VERSION}.bin"
+
+      - name: Write flashing instructions
+        working-directory: application/edge_agent/build
+        run: |
+          cat > FLASH.md <<EOF
+          # AD35-S3 Firmware ${FIRMWARE_VERSION}
+
+          Built from commit: ${GITHUB_SHA}
+
+          Flash the merged image at address 0x0:
+
+          \`\`\`bash
+          python -m esptool --chip esp32s3 --port <SERIAL_PORT> write_flash 0x0 merged-${FIRMWARE_VERSION}.bin
+          \`\`\`
+          EOF
+
+      - name: Upload versioned firmware artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: esp-claw-ad35-s3-${{ env.FIRMWARE_VERSION }}-${{ github.sha }}
+          if-no-files-found: error
+          retention-days: 30
+          path: |
+            application/edge_agent/build/merged-${{ env.FIRMWARE_VERSION }}.bin
+            application/edge_agent/build/FLASH.md
+            application/edge_agent/build/bootloader/bootloader.bin
+            application/edge_agent/build/partition_table/partition-table.bin
+            application/edge_agent/build/edge_agent.bin
+            application/edge_agent/build/ota_data_initial.bin
+            application/edge_agent/build/system.bin
+            application/edge_agent/build/storage.bin
+            application/edge_agent/build/flasher_args.json
+            application/edge_agent/build/flash_args
+            application/edge_agent/build/flash_project_args
+            application/edge_agent/build/sdkconfig

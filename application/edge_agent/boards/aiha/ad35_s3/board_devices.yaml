@@ -1,0 +1,46 @@
+version: 1.0.0
+devices:
+  # Boot-time I2C bus scan. Deliberately kept in the shipping profile: it is
+  # cheap, runs once, and is the single most useful diagnostic for this board.
+  # It is what identified the AW9523 at 0x59 and proved the vendor header's
+  # SDA=6/SCL=5 pins were wrong. Without it, a mis-wired I2C bus presents as a
+  # silently dead display rather than an obvious error. See README.md.
+  - name: i2c_diagnostics
+    chip: generic
+    type: custom
+    version: default
+    peripherals:
+      - name: i2c_master
+
+  # AW9523 controls the LCD backlight cathodes (P8-P11) and reset (P14).
+  - name: gpio_expander
+    chip: aw9523b
+    type: gpio_expander
+    version: default
+    dependencies:
+      esp_io_expander_aw9523b:
+        override_path: "${BOARD_PATH}/components/esp_io_expander_aw9523b"
+        require: public
+    config:
+      max_pins: 16
+      output_io_mask: [8, 9, 10, 11, 14]
+      output_io_level_mask: [0, 0, 0, 0, 0]
+      input_io_mask: null
+    peripherals:
+      - name: i2c_master
+        # Board Manager expects the 8-bit wire address and probes i2c_addr >> 1.
+        # AW9523's 7-bit address is 0x59, therefore this value must be 0xB2.
+        i2c_addr: [0xB2]
+
+  # Board Manager has no generated I80 display path. setup_device.c registers
+  # this custom device while preserving the standard display_lcd contract.
+  - name: display_lcd
+    chip: st7796
+    type: custom
+    depends_on: gpio_expander
+    version: default
+    dependencies:
+      espressif/esp_lcd_st7796: "^1.3.0"
+    config:
+      lcd_width: 480
+      lcd_height: 320
