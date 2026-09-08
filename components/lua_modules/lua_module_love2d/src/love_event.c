@@ -31,6 +31,9 @@
 
 #include "love_gfx_impl.h"  /* love_gfx_init_framebuffer, love_gfx_flush */
 
+/* Forward declaration from lua_module_love2d.c — luaopen function for love. */
+extern int luaopen_love(lua_State *L);
+
 static const char *TAG = "love_event";
 
 /* Touch chip FT6336U is at I2C 0x38, compatible with FT5x06 register layout. */
@@ -160,15 +163,12 @@ static void love_runtime_task(void *arg)
     }
     luaL_openlibs(L);
 
-    /* 3. Load love module via require */
-    lua_getglobal(L, "require");
-    lua_pushstring(L, "love");
-    if (lua_pcall(L, 1, 1, 0) != LUA_OK) {
-        ESP_LOGE(TAG, "failed to require love: %s", lua_tostring(L, -1));
-        lua_pop(L, 1);
-    } else {
-        lua_setglobal(L, "love");
-    }
+    /* 3. Load love module directly via luaL_requiref.
+     * The module was statically linked by the linker (same component),
+     * so we call luaopen_love directly instead of going through require
+     * which would need cap_lua's module registry. */
+    luaL_requiref(L, "love", luaopen_love, 1);
+    lua_pop(L, 1);  /* remove copy left by requiref */
 
     /* 4. Add script paths to package.path */
     lua_getglobal(L, "package");

@@ -3,7 +3,6 @@ name: Build AD35-S3 Firmware
 on:
   push:
     branches:
-      - feat/add-ad35-s3-v2
       - feat/ad35s3-love2d-runtime
   pull_request:
     branches:
