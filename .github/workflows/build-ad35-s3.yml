@@ -4,12 +4,6 @@ on:
   push:
     branches:
       - feat/ad35s3-love2d-runtime
-  pull_request:
-    branches:
-      - master
-    paths:
-      - "application/edge_agent/boards/aiha/ad35_s3/**"
-      - ".github/workflows/build-ad35-s3.yml"
   workflow_dispatch:
 
 jobs:
