@@ -262,7 +262,7 @@ static void love_runtime_task(void *arg)
 
     /* 7. Main game loop */
     int64_t last_tick = esp_timer_get_time();
-    const int64_t target_frame_us = 16667;  /* ~60 FPS */
+    const int64_t target_frame_us = 33333;  /* ~30 FPS to keep GDMA healthy */
 
     while (1) {
         int64_t now = esp_timer_get_time();

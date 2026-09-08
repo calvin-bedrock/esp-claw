@@ -39,8 +39,8 @@ love.draw = function()
     love.graphics.print("ESP-CLAW Love2D Runtime v1.0.0", 20, 20)
 
     -- Animated circle (bounce)
-    x = 240 + 180 * math.sin(t * 2.0)
-    y = 160 + 80 * math.cos(t * 1.7)
+    x = math.floor(240 + 180 * math.sin(t * 2.0))
+    y = math.floor(160 + 80 * math.cos(t * 1.7))
     love.graphics.circle("fill", x, y, ball_r)
 
     -- A rectangle that pulses

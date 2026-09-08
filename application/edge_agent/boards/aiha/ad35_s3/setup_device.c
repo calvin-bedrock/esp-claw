@@ -883,70 +883,10 @@ static int display_lcd_init(void *config, int cfg_size, void **device_handle)
         return ret;
     }
 
-    /* Draw the Boot HUD (system self-test panel) and hand the panel over.
-     *
-     * The HUD is deliberately textual rather than a colour pattern. Boards
-     * are commonly flashed over the air where serial output cannot be
-     * captured, so on-screen text identifying the build is the only reliable
-     * confirmation of which firmware is actually running. */
-    boot_hud_test_t hud = {
-        .expander_ok   = true,   /* we reached this point -> AW9523 works */
-        .backlight_ok  = true,   /* backlight already toggled on above */
-        .touch_ok      = false,
-        .touch_vendor_id = 0,
-        .dac_ok        = false,
-        .adc_ok        = false,
-        .camera_ok     = false,
-        .prox_ok       = (s_prox_dev != NULL),
-    };
-
-    /* Probe FT6336U touch controller + camera SCCB on the shared I2C bus,
-     * then init the proximity sensor (non-blocking, non-fatal). */
-    void *i2c_periph = NULL;
-    if (esp_board_periph_ref_handle("i2c_master", &i2c_periph) == ESP_OK) {
-        i2c_master_bus_handle_t i2c_bus = (i2c_master_bus_handle_t)i2c_periph;
-
-        uint8_t vend_id = 0;
-        if (ft6336u_probe(i2c_bus, &vend_id) == ESP_OK) {
-            hud.touch_ok = true;
-            hud.touch_vendor_id = vend_id;
-            ESP_LOGI(TAG, "FT6336U touch ACK at 0x38, vendor ID=0x%02X", vend_id);
-        } else {
-            ESP_LOGW(TAG, "FT6336U touch not responding at 0x38");
-        }
-
-        hud.camera_ok = camera_probe(i2c_bus);
-        ad35_s3_init_proximity(*expander, i2c_bus);
-        hud.prox_ok = (s_prox_dev != NULL);
-
-        esp_board_periph_unref_handle("i2c_master");
-    } else {
-        ESP_LOGW(TAG, "No i2c_master handle for touch/camera/prox self-test");
-    }
-
-    /* Query audio codec handles to fill the DAC/ADC self-test fields. */
-    {
-        dev_audio_codec_handles_t *dac = NULL;
-        if (esp_board_device_get_handle("audio_dac", (void **)&dac) != ESP_OK ||
-            dac == NULL || dac->codec_dev == NULL) {
-            ESP_LOGW(TAG, "audio_dac handle not available for HUD");
-        } else {
-            hud.dac_ok = true;
-            ESP_LOGI(TAG, "ES8311 DAC at 0x30 OK");
-        }
-        dev_audio_codec_handles_t *adc = NULL;
-        if (esp_board_device_get_handle("audio_adc", (void **)&adc) != ESP_OK ||
-            adc == NULL || adc->codec_dev == NULL) {
-            ESP_LOGW(TAG, "audio_adc handle not available for HUD");
-        } else {
-            hud.adc_ok = true;
-            ESP_LOGI(TAG, "ES7210 ADC at 0x40 OK");
-        }
-    }
-
-    (void)render_boot_hud(panel_handle, &hud);
-    vTaskDelay(pdMS_TO_TICKS(1200));
-
+    /* Skip full Boot HUD (self-test panel) to avoid GPU/GDMA
+     * contention during early boot. The minimal confirmation is in
+     * the serial output (APP version + "Ready"). The panel stays
+     * black and Love2D starts immediately. */
     ret = esp_board_device_override_config("display_lcd", (void *)&s_lcd_config,
                                            sizeof(s_lcd_config));
     if (ret != ESP_OK) {

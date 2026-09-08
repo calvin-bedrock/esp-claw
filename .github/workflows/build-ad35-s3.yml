@@ -15,7 +15,7 @@ jobs:
       run:
         shell: bash
     env:
-      FIRMWARE_VERSION: "1.0.0"
+      FIRMWARE_VERSION: "0.3.0"
       BOARD_NAME: ad35_s3
       BOARD_PATH: ./boards/aiha
 
