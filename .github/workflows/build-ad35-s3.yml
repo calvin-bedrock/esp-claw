@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/add-ad35-s3-v2
+      - feat/ad35s3-love2d-runtime
   pull_request:
     branches:
       - master
@@ -21,7 +22,7 @@ jobs:
       run:
         shell: bash
     env:
-      FIRMWARE_VERSION: "0.2.0"
+      FIRMWARE_VERSION: "1.0.0"
       BOARD_NAME: ad35_s3
       BOARD_PATH: ./boards/aiha
 

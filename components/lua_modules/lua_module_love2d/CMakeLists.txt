@@ -1,0 +1,14 @@
+idf_component_register(
+    SRC_DIRS
+        "src"
+    INCLUDE_DIRS
+        "include"
+        "src"
+    REQUIRES
+        cap_lua
+        display_service
+        driver
+        esp_timer
+        esp_lcd
+        esp_codec_dev
+)

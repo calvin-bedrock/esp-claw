@@ -9,8 +9,18 @@ CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_OCT=y
 CONFIG_SPIRAM_SPEED_80M=y
 
-# The LCD is a custom I80 device but uses the standard display service.
+# LCD is a custom I80 device but uses the standard display service.
 CONFIG_ESP_BOARD_DEV_DISPLAY_LCD_SUPPORT=y
+
+# Audio requires esp_codec_dev for ES8311 + ES7210 codecs.
+CONFIG_ESP_BOARD_DEV_AUDIO_CODEC_SUPPORT=y
+
+# FreeRTOS timer task stack.  The Tmr Svc task runs timer callbacks; some
+# internal BM/audio timers may need more than the IDF default (2048).
+CONFIG_FREERTOS_TIMER_TASK_STACK_DEPTH=4096
 
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
 CONFIG_ESP_CONSOLE_SECONDARY_NONE=y
+
+# Love2D Lua runtime for boot HUD + game loop.
+CONFIG_APP_CLAW_LUA_MODULE_LOVE2D=y
