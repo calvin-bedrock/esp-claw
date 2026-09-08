@@ -20,7 +20,10 @@
 #include "freertos/task.h"
 
 #include "gen_board_device_custom.h"
-#include "lua_module_love2d.h"
+
+/* Love2D runtime start — declared as extern so the board component doesn't
+ * need to depend on lua_module_love2d for the include path. */
+extern esp_err_t lua_module_love2d_start(void *display_panel_handle, void *touch_i2c_bus_handle);
 
 #include <math.h>
 #include <stdio.h>
