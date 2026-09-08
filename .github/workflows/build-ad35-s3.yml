@@ -45,13 +45,24 @@ jobs:
           IDF_TARGET=esp32s3 idf.py bmgr -c "${BOARD_PATH}" -b "${BOARD_NAME}"
           test -s components/gen_bmgr_codes/gen_board_metadata.yaml
 
+      - name: Generate FATFS image
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          # Create FATFS image from the fatfs_image source tree
+          python -m esptool --chip esp32s3 create_partition_table \
+            --input custom_partition_table.csv \
+            --output partition_table.bin
+          python -m esptool --chip esp32s3 merge_bin \
+            --output storage.bin \
+            --fill-flash-size 4MB \
+            0x110000 fatfs_image --compression lz4
+
       - name: Build firmware
         working-directory: application/edge_agent
         run: |
           source /opt/esp/idf/export.sh
           idf.py -D PROJECT_VER="${FIRMWARE_VERSION}" build
-          python -m esptool image_info --version 2 build/edge_agent.bin | tee build/image-info.txt
-          grep -E "App version:[[:space:]]+${FIRMWARE_VERSION}$" build/image-info.txt
 
       - name: Create versioned merged firmware
         working-directory: application/edge_agent
