@@ -329,7 +329,9 @@ static void love_runtime_task(void *arg)
         }
 
         /* Flush framebuffer to LCD. */
-        love_gfx_flush();
+        /* Disabled: user explicitly requested no LCD drawing / no screen refresh.
+         * The framebuffer stays untouched; GDMA is not used.
+         * love_gfx_flush(); */
 
         /* Frame rate limiting. */
         int64_t elapsed = esp_timer_get_time() - now;
