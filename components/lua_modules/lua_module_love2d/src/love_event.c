@@ -42,7 +42,7 @@ static const char *TAG = "love_event";
 #define FT6336U_TOUCH1_YL   0x06  /* Touch 1 Y low byte */
 
 /* Handles set by lua_module_love2d_start(). */
-static esp_lcd_panel_handle_t s_panel = NULL;
+static void *s_panel = NULL;
 static i2c_master_bus_handle_t s_touch_bus = NULL;
 static bool s_touch_handling_enabled = false;
 
@@ -341,7 +341,7 @@ static void love_runtime_task(void *arg)
 
 esp_err_t lua_module_love2d_start(void *display_panel_handle, void *touch_i2c_bus_handle)
 {
-    s_panel = (esp_lcd_panel_handle_t)display_panel_handle;
+    s_panel = display_panel_handle;
     s_touch_bus = (i2c_master_bus_handle_t)touch_i2c_bus_handle;
     s_touch_handling_enabled = (touch_i2c_bus_handle != NULL);
 
