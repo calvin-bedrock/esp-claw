@@ -146,6 +146,12 @@ static void love_runtime_task(void *arg)
         "/system/scripts/builtin/main.lua",
     };
 
+    /* Wait for system initialization to complete before starting
+     * the Love2D loop.  This lets WiFi, HTTP server, and other
+     * board services finish initializing so the GDMA link isn't
+     * starved by the 60 FPS frame loop. */
+    vTaskDelay(pdMS_TO_TICKS(3000));
+
     /* 1. Allocate framebuffer */
     ret = love_gfx_init_framebuffer();
     if (ret != ESP_OK) {
