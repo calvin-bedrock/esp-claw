@@ -3,13 +3,7 @@ name: Build AD35-S3 Firmware
 on:
   push:
     branches:
-      - feat/add-ad35-s3-v2
-  pull_request:
-    branches:
-      - master
-    paths:
-      - "application/edge_agent/boards/aiha/ad35_s3/**"
-      - ".github/workflows/build-ad35-s3.yml"
+      - feat/ad35s3-love2d-runtime
   workflow_dispatch:
 
 jobs:
@@ -21,7 +15,7 @@ jobs:
       run:
         shell: bash
     env:
-      FIRMWARE_VERSION: "0.2.0"
+      FIRMWARE_VERSION: "0.3.7"
       BOARD_NAME: ad35_s3
       BOARD_PATH: ./boards/aiha
 
@@ -34,10 +28,20 @@ jobs:
           source /opt/esp/idf/export.sh
           python -m pip install --disable-pip-version-check esp-bmgr-assist==0.8.3
 
+      - name: Resolve managed components
+        working-directory: application/edge_agent
+        run: |
+          source /opt/esp/idf/export.sh
+          IDF_TARGET=esp32s3 idf.py reconfigure
+
       - name: Generate Board Manager configuration
         working-directory: application/edge_agent
         run: |
           source /opt/esp/idf/export.sh
+          BMGR_PATH="$(pwd)/managed_components/espressif__esp_board_manager"
+          if [ -d "$BMGR_PATH" ]; then
+            export IDF_EXTRA_ACTIONS_PATH="${BMGR_PATH}"
+          fi
           IDF_TARGET=esp32s3 idf.py bmgr -c "${BOARD_PATH}" -b "${BOARD_NAME}"
           test -s components/gen_bmgr_codes/gen_board_metadata.yaml
 

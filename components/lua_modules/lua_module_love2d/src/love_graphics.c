@@ -1,0 +1,440 @@
+/*
+ * SPDX-FileCopyrightText: 2026 Calvin Bedrock
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * love.graphics implementation for ESP-Claw Love2D runtime.
+ * Renders into an RGB565 offscreen framebuffer in PSRAM,
+ * then flips to the ST7796 panel via esp_lcd_panel_draw_bitmap.
+ */
+
+#include <math.h>
+#include <stdint.h>
+#include <string.h>
+#include <stdlib.h>
+
+#include "esp_err.h"
+#include "esp_heap_caps.h"
+#include "esp_lcd_panel_ops.h"
+#include "esp_log.h"
+#include "esp_timer.h"
+#include "lauxlib.h"
+#include "lua.h"
+
+static const char *TAG = "love_gfx";
+
+/* Frame dimensions (after swap_xy = 480 wide x 320 tall). */
+#define LOVE_GFX_W 480
+#define LOVE_GFX_H 320
+#define LOVE_GFX_BYTES (LOVE_GFX_W * LOVE_GFX_H * sizeof(uint16_t))
+
+/* Globally stored panel handle — set before the love loop runs. */
+static esp_lcd_panel_handle_t s_panel = NULL;
+static uint16_t *s_fb = NULL;
+
+/* Dirty flag — only re-draw bitmap when the frame actually changed. */
+static volatile bool s_dirty = false;
+
+/* ---- Public setters ---- */
+
+void love_set_display_handle(void *panel_handle)
+{
+    s_panel = (esp_lcd_panel_handle_t)panel_handle;
+}
+
+esp_err_t love_gfx_init_framebuffer(void)
+{
+    if (s_fb != NULL) {
+        return ESP_OK;  /* already allocated */
+    }
+    s_fb = (uint16_t *)heap_caps_malloc(LOVE_GFX_BYTES, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (s_fb == NULL) {
+        ESP_LOGE(TAG, "framebuffer alloc failed (%u bytes)", LOVE_GFX_BYTES);
+        return ESP_ERR_NO_MEM;
+    }
+    /* Clear to black. */
+    memset(s_fb, 0, LOVE_GFX_BYTES);
+    s_dirty = true;
+    ESP_LOGI(TAG, "framebuffer allocated: %u bytes in PSRAM", LOVE_GFX_BYTES);
+    return ESP_OK;
+}
+
+void love_gfx_flush(void)
+{
+    if (!s_dirty || s_panel == NULL || s_fb == NULL) {
+        return;
+    }
+    esp_err_t ret = esp_lcd_panel_draw_bitmap(s_panel, 0, 0, LOVE_GFX_W, LOVE_GFX_H, s_fb);
+    if (ret != ESP_OK) {
+        ESP_LOGW(TAG, "flush failed: %s", esp_err_to_name(ret));
+    }
+    s_dirty = false;
+}
+
+static void mark_dirty(void)
+{
+    s_dirty = true;
+}
+
+/* ---- Color helpers ---- */
+
+static inline uint16_t rgb565(uint8_t r, uint8_t g, uint8_t b)
+{
+    return ((r >> 3) << 11) | ((g >> 2) << 5) | (b >> 3);
+}
+
+/* ---- 8x8 font (subset for Love2D) ---- */
+
+static const uint8_t s_font8x8[128][8] = {
+    [0x20] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+    [0x21] = {0x0C, 0x1E, 0x1E, 0x0C, 0x0C, 0x00, 0x0C, 0x00},
+    [0x22] = {0x36, 0x36, 0x24, 0x00, 0x00, 0x00, 0x00, 0x00},
+    [0x23] = {0x14, 0x7F, 0x14, 0x14, 0x7F, 0x14, 0x00, 0x00},
+    [0x24] = {0x0C, 0x3E, 0x03, 0x1E, 0x30, 0x1F, 0x0C, 0x00},
+    [0x25] = {0x00, 0x63, 0x33, 0x18, 0x0C, 0x66, 0x63, 0x00},
+    [0x26] = {0x1C, 0x36, 0x1C, 0x3B, 0x36, 0x33, 0x38, 0x00},
+    [0x27] = {0x0C, 0x0C, 0x06, 0x00, 0x00, 0x00, 0x00, 0x00},
+    [0x28] = {0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x18, 0x30, 0x00},
+    [0x29] = {0x0C, 0x18, 0x30, 0x30, 0x30, 0x18, 0x0C, 0x00},
+    [0x2A] = {0x00, 0x36, 0x1C, 0x7F, 0x1C, 0x36, 0x00, 0x00},
+    [0x2B] = {0x00, 0x0C, 0x0C, 0x3F, 0x0C, 0x0C, 0x00, 0x00},
+    [0x2C] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C, 0x06},
+    [0x2D] = {0x00, 0x00, 0x00, 0x3F, 0x00, 0x00, 0x00, 0x00},
+    [0x2E] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0C, 0x0C, 0x00},
+    [0x2F] = {0x60, 0x30, 0x18, 0x0C, 0x06, 0x03, 0x01, 0x00},
+    [0x30] = {0x3E, 0x63, 0x73, 0x7B, 0x6F, 0x67, 0x3E, 0x00},
+    [0x31] = {0x0C, 0x0E, 0x0C, 0x0C, 0x0C, 0x0C, 0x3F, 0x00},
+    [0x32] = {0x1E, 0x33, 0x30, 0x1C, 0x06, 0x33, 0x3F, 0x00},
+    [0x33] = {0x1E, 0x33, 0x30, 0x1C, 0x30, 0x33, 0x1E, 0x00},
+    [0x34] = {0x38, 0x3C, 0x36, 0x33, 0x7F, 0x30, 0x78, 0x00},
+    [0x35] = {0x3F, 0x03, 0x1F, 0x30, 0x30, 0x33, 0x1E, 0x00},
+    [0x36] = {0x1C, 0x06, 0x03, 0x1F, 0x33, 0x33, 0x1E, 0x00},
+    [0x37] = {0x3F, 0x33, 0x30, 0x18, 0x0C, 0x0C, 0x0C, 0x00},
+    [0x38] = {0x1E, 0x33, 0x33, 0x1E, 0x33, 0x33, 0x1E, 0x00},
+    [0x39] = {0x1E, 0x33, 0x33, 0x3E, 0x30, 0x18, 0x0E, 0x00},
+    [0x3A] = {0x00, 0x0C, 0x0C, 0x00, 0x00, 0x0C, 0x0C, 0x00},
+    [0x3B] = {0x00, 0x0C, 0x0C, 0x00, 0x00, 0x0C, 0x0C, 0x06},
+    [0x3C] = {0x30, 0x18, 0x0C, 0x06, 0x0C, 0x18, 0x30, 0x00},
+    [0x3D] = {0x00, 0x00, 0x3F, 0x00, 0x00, 0x3F, 0x00, 0x00},
+    [0x3E] = {0x06, 0x0C, 0x18, 0x30, 0x18, 0x0C, 0x06, 0x00},
+    [0x3F] = {0x1E, 0x33, 0x30, 0x18, 0x0C, 0x00, 0x0C, 0x00},
+    [0x40] = {0x3E, 0x63, 0x7B, 0x7B, 0x7B, 0x03, 0x1E, 0x00},
+    [0x41] = {0x0C, 0x1E, 0x33, 0x33, 0x3F, 0x33, 0x33, 0x00},
+    [0x42] = {0x3F, 0x66, 0x66, 0x3E, 0x66, 0x66, 0x3F, 0x00},
+    [0x43] = {0x3C, 0x66, 0x03, 0x03, 0x03, 0x66, 0x3C, 0x00},
+    [0x44] = {0x1F, 0x33, 0x33, 0x33, 0x33, 0x33, 0x1F, 0x00},
+    [0x45] = {0x7F, 0x03, 0x03, 0x1F, 0x03, 0x03, 0x7F, 0x00},
+    [0x46] = {0x7F, 0x03, 0x03, 0x1F, 0x03, 0x03, 0x03, 0x00},
+    [0x47] = {0x3C, 0x66, 0x03, 0x03, 0x73, 0x66, 0x3C, 0x00},
+    [0x48] = {0x66, 0x66, 0x66, 0x7E, 0x66, 0x66, 0x66, 0x00},
+    [0x49] = {0x3F, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3F, 0x00},
+    [0x4A] = {0x78, 0x30, 0x30, 0x30, 0x33, 0x33, 0x1E, 0x00},
+    [0x4B] = {0x67, 0x66, 0x36, 0x1E, 0x36, 0x66, 0x67, 0x00},
+    [0x4C] = {0x03, 0x03, 0x03, 0x03, 0x03, 0x03, 0x7F, 0x00},
+    [0x4D] = {0x63, 0x77, 0x7F, 0x6B, 0x63, 0x63, 0x63, 0x00},
+    [0x4E] = {0x66, 0x66, 0x76, 0x3E, 0x36, 0x66, 0x66, 0x00},
+    [0x4F] = {0x1E, 0x33, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x00},
+    [0x50] = {0x3F, 0x66, 0x66, 0x3E, 0x06, 0x06, 0x0F, 0x00},
+    [0x51] = {0x1E, 0x33, 0x33, 0x33, 0x3B, 0x1E, 0x38, 0x00},
+    [0x52] = {0x3F, 0x66, 0x66, 0x3E, 0x36, 0x66, 0x67, 0x00},
+    [0x53] = {0x1E, 0x33, 0x03, 0x1E, 0x30, 0x33, 0x1E, 0x00},
+    [0x54] = {0x3F, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x00},
+    [0x55] = {0x33, 0x33, 0x33, 0x33, 0x33, 0x33, 0x1E, 0x00},
+    [0x56] = {0x33, 0x33, 0x33, 0x33, 0x1E, 0x1E, 0x0C, 0x00},
+    [0x57] = {0x63, 0x63, 0x63, 0x6B, 0x7F, 0x77, 0x63, 0x00},
+    [0x58] = {0x63, 0x63, 0x36, 0x1C, 0x36, 0x63, 0x63, 0x00},
+    [0x59] = {0x33, 0x33, 0x33, 0x1E, 0x0C, 0x0C, 0x0C, 0x00},
+    [0x5A] = {0x7F, 0x30, 0x18, 0x0C, 0x06, 0x03, 0x7F, 0x00},
+    [0x5B] = {0x3E, 0x06, 0x06, 0x06, 0x06, 0x06, 0x3E, 0x00},
+    [0x5C] = {0x01, 0x03, 0x06, 0x0C, 0x18, 0x30, 0x60, 0x00},
+    [0x5D] = {0x3E, 0x30, 0x30, 0x30, 0x30, 0x30, 0x3E, 0x00},
+    [0x5E] = {0x08, 0x1C, 0x36, 0x63, 0x00, 0x00, 0x00, 0x00},
+    [0x5F] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00},
+    [0x60] = {0x0C, 0x0C, 0x18, 0x00, 0x00, 0x00, 0x00, 0x00},
+    [0x61] = {0x00, 0x00, 0x1E, 0x30, 0x3E, 0x33, 0x3E, 0x00},
+    [0x62] = {0x03, 0x03, 0x1F, 0x33, 0x33, 0x33, 0x1F, 0x00},
+    [0x63] = {0x00, 0x00, 0x1E, 0x33, 0x03, 0x33, 0x1E, 0x00},
+    [0x64] = {0x30, 0x30, 0x3E, 0x33, 0x33, 0x33, 0x3E, 0x00},
+    [0x65] = {0x00, 0x00, 0x1E, 0x33, 0x3F, 0x03, 0x1E, 0x00},
+    [0x66] = {0x1C, 0x36, 0x06, 0x0F, 0x06, 0x06, 0x0F, 0x00},
+    [0x67] = {0x00, 0x00, 0x3E, 0x33, 0x33, 0x3E, 0x30, 0x1E},
+    [0x68] = {0x03, 0x03, 0x1F, 0x33, 0x33, 0x33, 0x33, 0x00},
+    [0x69] = {0x0C, 0x00, 0x0E, 0x0C, 0x0C, 0x0C, 0x3F, 0x00},
+    [0x6A] = {0x30, 0x00, 0x38, 0x30, 0x30, 0x30, 0x33, 0x1E},
+    [0x6B] = {0x03, 0x03, 0x36, 0x1E, 0x1E, 0x36, 0x33, 0x00},
+    [0x6C] = {0x0E, 0x0C, 0x0C, 0x0C, 0x0C, 0x0C, 0x3F, 0x00},
+    [0x6D] = {0x00, 0x00, 0x37, 0x7F, 0x6B, 0x63, 0x63, 0x00},
+    [0x6E] = {0x00, 0x00, 0x1F, 0x33, 0x33, 0x33, 0x33, 0x00},
+    [0x6F] = {0x00, 0x00, 0x1E, 0x33, 0x33, 0x33, 0x1E, 0x00},
+    [0x70] = {0x00, 0x00, 0x1F, 0x33, 0x33, 0x1F, 0x03, 0x03},
+    [0x71] = {0x00, 0x00, 0x3E, 0x33, 0x33, 0x3E, 0x30, 0x30},
+    [0x72] = {0x00, 0x00, 0x3B, 0x66, 0x06, 0x06, 0x0F, 0x00},
+    [0x73] = {0x00, 0x00, 0x1E, 0x03, 0x1E, 0x30, 0x1F, 0x00},
+    [0x74] = {0x06, 0x06, 0x1F, 0x06, 0x06, 0x36, 0x1C, 0x00},
+    [0x75] = {0x00, 0x00, 0x33, 0x33, 0x33, 0x33, 0x3E, 0x00},
+    [0x76] = {0x00, 0x00, 0x33, 0x33, 0x33, 0x1E, 0x0C, 0x00},
+    [0x77] = {0x00, 0x00, 0x63, 0x63, 0x6B, 0x7F, 0x36, 0x00},
+    [0x78] = {0x00, 0x00, 0x33, 0x1E, 0x0C, 0x1E, 0x33, 0x00},
+    [0x79] = {0x00, 0x00, 0x33, 0x33, 0x33, 0x3E, 0x30, 0x1E},
+    [0x7A] = {0x00, 0x00, 0x3F, 0x18, 0x0C, 0x06, 0x3F, 0x00},
+    [0x7B] = {0x38, 0x0C, 0x0C, 0x06, 0x0C, 0x0C, 0x38, 0x00},
+    [0x7C] = {0x0C, 0x0C, 0x0C, 0x00, 0x0C, 0x0C, 0x0C, 0x00},
+    [0x7D] = {0x1C, 0x30, 0x30, 0x60, 0x30, 0x30, 0x1C, 0x00},
+    [0x7E] = {0x00, 0x38, 0x6C, 0x38, 0x00, 0x00, 0x00, 0x00},
+    [0x7F] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00},
+};
+
+static inline void draw_pixel(int x, int y, uint16_t color)
+{
+    if (x < 0 || x >= LOVE_GFX_W || y < 0 || y >= LOVE_GFX_H || s_fb == NULL) {
+        return;
+    }
+    s_fb[y * LOVE_GFX_W + x] = color;
+}
+
+static inline uint16_t get_bg_color(void)
+{
+    /* Fetch love.graphics.bg_r/bg_g/bg_b from registry.
+     * We cache them as function static — the lua state writes them. */
+    return rgb565(0, 0, 0);  /* default */
+}
+
+/* ---- Love2D Drawable wrapper (just a framebuffer-based drawer) ---- */
+
+/* ---- Lua bindings ---- */
+
+/**
+ * love.graphics.clear(r, g, b)  — fill entire framebuffer with RGB color.
+ * Args: 3 integers, each 0–255.
+ */
+int lua_love_graphics_clear(lua_State *L)
+{
+    uint8_t r = (uint8_t)luaL_checkinteger(L, 1);
+    uint8_t g = (uint8_t)luaL_checkinteger(L, 2);
+    uint8_t b = (uint8_t)luaL_checkinteger(L, 3);
+
+    if (s_fb == NULL) {
+        return luaL_error(L, "love.graphics: framebuffer not initialized");
+    }
+
+    uint16_t color = rgb565(r, g, b);
+    for (int i = 0; i < LOVE_GFX_W * LOVE_GFX_H; ++i) {
+        s_fb[i] = color;
+    }
+    mark_dirty();
+    return 0;
+}
+
+/**
+ * love.graphics.rectangle(mode, x, y, w, h)
+ * mode: "fill" or "line" (string).
+ * x,y: top-left corner. w,h: width/height.
+ */
+static uint16_t love_gfx_get_fg_color(lua_State *L)
+{
+    uint8_t r = 255, g = 255, b = 255;
+    lua_getglobal(L, "love");
+    if (lua_istable(L, -1)) {
+        lua_getfield(L, -1, "graphics");
+        if (lua_istable(L, -1)) {
+            lua_getfield(L, -1, "fg_r");
+            if (lua_isinteger(L, -1)) r = (uint8_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            lua_getfield(L, -1, "fg_g");
+            if (lua_isinteger(L, -1)) g = (uint8_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+            lua_getfield(L, -1, "fg_b");
+            if (lua_isinteger(L, -1)) b = (uint8_t)lua_tointeger(L, -1);
+            lua_pop(L, 1);
+        }
+        lua_pop(L, 1);
+    }
+    lua_pop(L, 1);
+    return rgb565(r, g, b);
+}
+
+int lua_love_graphics_rectangle(lua_State *L)
+{
+    const char *mode = luaL_checkstring(L, 1);
+    int x = (int)luaL_checkinteger(L, 2);
+    int y = (int)luaL_checkinteger(L, 3);
+    int w = (int)luaL_checkinteger(L, 4);
+    int h = (int)luaL_checkinteger(L, 5);
+    bool fill = (strcmp(mode, "fill") == 0);
+
+    if (s_fb == NULL) {
+        return luaL_error(L, "love.graphics: framebuffer not initialized");
+    }
+
+    /* Fetch foreground color from the love.graphics table */
+    uint16_t fg = love_gfx_get_fg_color(L);
+
+    if (fill) {
+        for (int row = y; row < y + h && row < LOVE_GFX_H; ++row) {
+            if (row < 0) continue;
+            for (int col = x; col < x + w && col < LOVE_GFX_W; ++col) {
+                if (col < 0) continue;
+                s_fb[row * LOVE_GFX_W + col] = fg;
+            }
+        }
+    } else {
+        /* Outline: top, bottom, left, right */
+        for (int col = x; col < x + w && col < LOVE_GFX_W; ++col) {
+            if (col < 0) continue;
+            if (y >= 0 && y < LOVE_GFX_H) s_fb[y * LOVE_GFX_W + col] = fg;
+            int by = y + h - 1;
+            if (by >= 0 && by < LOVE_GFX_H) s_fb[by * LOVE_GFX_W + col] = fg;
+        }
+        for (int row = y + 1; row < y + h - 1 && row < LOVE_GFX_H; ++row) {
+            if (row < 0) continue;
+            if (x >= 0 && x < LOVE_GFX_W) s_fb[row * LOVE_GFX_W + x] = fg;
+            int rx = x + w - 1;
+            if (rx >= 0 && rx < LOVE_GFX_W) s_fb[row * LOVE_GFX_W + rx] = fg;
+        }
+    }
+    mark_dirty();
+    return 0;
+}
+
+/**
+ * love.graphics.circle(mode, x, y, radius)
+ * mode: "fill" or "line".
+ * x,y: center. radius: integer.
+ */
+int lua_love_graphics_circle(lua_State *L)
+{
+    const char *mode = luaL_checkstring(L, 1);
+    int cx = (int)luaL_checkinteger(L, 2);
+    int cy = (int)luaL_checkinteger(L, 3);
+    int r = (int)luaL_checkinteger(L, 4);
+    bool fill = (strcmp(mode, "fill") == 0);
+
+    if (s_fb == NULL) {
+        return luaL_error(L, "love.graphics: framebuffer not initialized");
+    }
+
+    uint16_t fg = love_gfx_get_fg_color(L);
+
+    if (fill) {
+        int x0 = r - 1;
+        int y0 = 0;
+        int dx = 1;
+        int dy = 1;
+        int err = dx - (r << 1);
+        while (x0 >= y0) {
+            for (int y2 = cy - y0; y2 <= cy + y0; y2++) {
+                if (cx - x0 >= 0 && cx - x0 < LOVE_GFX_W && y2 >= 0 && y2 < LOVE_GFX_H)
+                    s_fb[y2 * LOVE_GFX_W + (cx - x0)] = fg;
+                if (cx + x0 >= 0 && cx + x0 < LOVE_GFX_W && y2 >= 0 && y2 < LOVE_GFX_H)
+                    s_fb[y2 * LOVE_GFX_W + (cx + x0)] = fg;
+            }
+            for (int y2 = cy - x0; y2 <= cy + x0; y2++) {
+                if (cx - y0 >= 0 && cx - y0 < LOVE_GFX_W && y2 >= 0 && y2 < LOVE_GFX_H)
+                    s_fb[y2 * LOVE_GFX_W + (cx - y0)] = fg;
+                if (cx + y0 >= 0 && cx + y0 < LOVE_GFX_W && y2 >= 0 && y2 < LOVE_GFX_H)
+                    s_fb[y2 * LOVE_GFX_W + (cx + y0)] = fg;
+            }
+            y0 += 1; err += dy; dy += 2;
+            if (err > 0) { x0 -= 1; dx += 2; err += dx - (r << 1); }
+        }
+    } else {
+        int x0 = r - 1;
+        int y0 = 0;
+        int dx = 1;
+        int dy = 1;
+        int err = dx - (r << 1);
+        while (x0 >= y0) {
+            draw_pixel(cx + x0, cy + y0, fg);
+            draw_pixel(cx - x0, cy + y0, fg);
+            draw_pixel(cx + x0, cy - y0, fg);
+            draw_pixel(cx - x0, cy - y0, fg);
+            draw_pixel(cx + y0, cy + x0, fg);
+            draw_pixel(cx - y0, cy + x0, fg);
+            draw_pixel(cx + y0, cy - x0, fg);
+            draw_pixel(cx - y0, cy - x0, fg);
+            y0 += 1; err += dy; dy += 2;
+            if (err > 0) { x0 -= 1; dx += 2; err += dx - (r << 1); }
+        }
+    }
+    mark_dirty();
+    return 0;
+}
+
+/**
+ * love.graphics.print(text, x, y)
+ * Renders text at (x,y) using the built-in 8x8 font, scaled 2x.
+ */
+int lua_love_graphics_print(lua_State *L)
+{
+    const char *text = luaL_checkstring(L, 1);
+    int x = (int)luaL_checkinteger(L, 2);
+    int y = (int)luaL_checkinteger(L, 3);
+
+    if (s_fb == NULL || text == NULL) {
+        return luaL_error(L, "love.graphics: framebuffer not initialized or nil text");
+    }
+
+    uint16_t fg = love_gfx_get_fg_color(L);
+
+    const int scale = 2;
+    int cursor = x;
+    for (const char *p = text; *p; ++p) {
+        unsigned char ch = (unsigned char)*p;
+        if (ch >= 128) continue;
+        const uint8_t *glyph = s_font8x8[ch];
+        for (int row = 0; row < 8; ++row) {
+            uint8_t bits = glyph[row];
+            for (int col = 0; col < 8; ++col) {
+                if (!(bits >> col & 0x1)) continue;
+                for (int dy = 0; dy < scale; ++dy) {
+                    for (int dx = 0; dx < scale; ++dx) {
+                        int px = cursor + col * scale + dx;
+                        int py = y + row * scale + dy;
+                        if (px >= 0 && px < LOVE_GFX_W && py >= 0 && py < LOVE_GFX_H) {
+                            s_fb[py * LOVE_GFX_W + px] = fg;
+                        }
+                    }
+                }
+            }
+        }
+        cursor += 8 * scale + 2; /* spacing */
+    }
+    mark_dirty();
+    return 0;
+}
+
+/**
+ * love.graphics.draw(drawable, x, y, r, sx, sy)
+ * Simplified: loads a PNG/BMP from LittleFS via esp_lcd_touch? No —
+ * we implement a simple placeholder that just logs.
+ * For now supports drawing a color-filled rectangle as a "drawable"
+ * when passed numeric arguments.
+ */
+int lua_love_graphics_draw(lua_State *L)
+{
+    /* drawable arg: if it's a table with .width and .height, treat as image stub */
+    if (lua_istable(L, 1)) {
+        lua_getfield(L, 1, "width");
+        lua_getfield(L, 1, "height");
+        if (lua_isinteger(L, -2) && lua_isinteger(L, -1)) {
+            int w = (int)lua_tointeger(L, -2);
+            int h = (int)lua_tointeger(L, -1);
+            lua_pop(L, 2);
+            int x = (int)luaL_optinteger(L, 3, 0);
+            int y = (int)luaL_optinteger(L, 4, 0);
+            /* draw as white rectangle placeholder */
+            uint16_t fg = rgb565(255, 255, 255);
+            for (int row = y; row < y + h && row < LOVE_GFX_H; ++row) {
+                if (row < 0) continue;
+                for (int col = x; col < x + w && col < LOVE_GFX_W; ++col) {
+                    if (col < 0) continue;
+                    s_fb[row * LOVE_GFX_W + col] = fg;
+                }
+            }
+            mark_dirty();
+            return 0;
+        }
+        lua_pop(L, 2);
+    }
+    ESP_LOGW(TAG, "love.graphics.draw: PNG/BMP decoding not yet implemented");
+    return 0;
+}

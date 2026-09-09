@@ -19,3 +19,40 @@ peripherals:
         # DB0..DB7 = 9,3,8,18,17,16,15,7, none of which is 4 or 5.
         sda: 5
         scl: 4
+
+  # I2S full-duplex: ES8311 DAC (playback) + ES7210 ADC (microphone)
+  # share the same I2S port and clock lines.  This matches the ESP-BOX-3
+  # pattern — distinct i2s_audio_out / i2s_audio_in names, single config.
+  #
+  # Pin assignments per AD35-S3.kicad_sch:
+  #   MCLK  = GPIO47
+  #   BCLK  = GPIO14
+  #   WS    = GPIO13
+  #   DOUT  = GPIO12  (ES8311 DAC TX from ESP)
+  #   DIN   = GPIO21  (ES7210 ADC RX to ESP)
+  - name: i2s_audio_out
+    type: i2s
+    role: master
+    format: std-out
+    config: &i2s0_config
+      port: 0
+      sample_rate_hz: 48000
+      mclk_multiple: 256
+      data_bit_width: 16
+      slot_bit_width: I2S_SLOT_BIT_WIDTH_AUTO
+      slot_mode: I2S_SLOT_MODE_STEREO
+      slot_mask: I2S_STD_SLOT_BOTH
+      ws_width: 16
+      pins:
+        mclk: 47
+        bclk: 14
+        ws: 13
+        dout: 12
+        din: 21
+
+  - name: i2s_audio_in
+    type: i2s
+    role: master
+    format: std-in
+    # i2s0 runs in full-duplex mode — i2s_audio_in reuses out config
+    config: *i2s0_config

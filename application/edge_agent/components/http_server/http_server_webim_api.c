@@ -30,6 +30,18 @@ static size_t              s_ws_count;
 static uint32_t            s_evt_seq;
 static bool                s_webim_bound;
 
+#define WEBIM_PENDING_MAX 64
+
+typedef struct {
+    char *json;
+    size_t len;
+} webim_pending_item_t;
+
+static webim_pending_item_t s_pending[WEBIM_PENDING_MAX];
+static size_t s_pending_head = 0;
+static size_t s_pending_tail = 0;
+static size_t s_pending_count = 0;
+
 typedef struct {
     char *json;
     size_t len;
@@ -40,6 +52,8 @@ typedef struct {
 static esp_err_t webim_ws_mx_ensure(void);
 static void webim_ws_fd_remove(int fd);
 static esp_err_t webim_ws_queue_json_to_fds(const int *fds, size_t fd_count, const char *json);
+static void webim_ws_flush_pending(int *fds, size_t fd_count);
+static void webim_ws_pending_push(const char *json);
 
 static void webim_ws_broadcast_job_run(void *arg)
 {
@@ -101,6 +115,8 @@ static void webim_ws_gc_locked(void)
 static void webim_ws_fd_add(int fd)
 {
     size_t i;
+    int local_fds[WEBIM_WS_MAX_CLIENTS];
+    size_t local_count = 0;
 
     if (fd < 0 || webim_ws_mx_ensure() != ESP_OK) {
         return;
@@ -121,7 +137,14 @@ static void webim_ws_fd_add(int fd)
     } else {
         ESP_LOGW(TAG, "WS client fd=%d rejected: max clients reached", fd);
     }
+    /* Copy snapshot and release the mutex BEFORE flushing,
+     * so webim_ws_flush_pending -> webim_ws_queue_json_to_fds
+     * -> httpd_queue_work never tries to re-take s_ws_mx. */
+    local_count = s_ws_count;
+    memcpy(local_fds, s_ws_fds, local_count * sizeof(int));
     xSemaphoreGive(s_ws_mx);
+
+    webim_ws_flush_pending(local_fds, local_count);
 }
 
 static void webim_ws_fd_remove(int fd)
@@ -164,7 +187,8 @@ static void webim_ws_broadcast_json(const char *json)
     xSemaphoreGive(s_ws_mx);
 
     if (local_count == 0) {
-        ESP_LOGW(TAG, "WS broadcast skipped: no connected clients");
+        ESP_LOGW(TAG, "WS broadcast skipped: no connected clients -> queued");
+        webim_ws_pending_push(json);
         return;
     }
 
@@ -206,6 +230,61 @@ static esp_err_t webim_ws_queue_json_to_fds(const int *fds, size_t fd_count, con
         free(job);
     }
     return err;
+}
+
+static void webim_ws_pending_push(const char *json)
+{
+    if (!json || s_pending_count >= WEBIM_PENDING_MAX) {
+        return;
+    }
+    xSemaphoreTake(s_ws_mx, portMAX_DELAY);
+    if (s_pending_count >= WEBIM_PENDING_MAX) {
+        xSemaphoreGive(s_ws_mx);
+        return;
+    }
+    s_pending[s_pending_tail].json = strdup(json);
+    s_pending[s_pending_tail].len = strlen(json);
+    s_pending_tail = (s_pending_tail + 1) % WEBIM_PENDING_MAX;
+    s_pending_count++;
+    xSemaphoreGive(s_ws_mx);
+}
+
+static void webim_ws_flush_pending(int *fds, size_t fd_count)
+{
+    if (!fds || fd_count == 0 || s_pending_count == 0) {
+        return;
+    }
+
+    while (s_pending_count > 0) {
+        webim_pending_item_t item;
+        xSemaphoreTake(s_ws_mx, portMAX_DELAY);
+        if (s_pending_count == 0) {
+            xSemaphoreGive(s_ws_mx);
+            return;
+        }
+        item = s_pending[s_pending_head];
+        s_pending_head = (s_pending_head + 1) % WEBIM_PENDING_MAX;
+        s_pending_count--;
+        xSemaphoreGive(s_ws_mx);
+
+        ESP_LOGI(TAG, "WS flush pending -> %u client(s) len=%u", (unsigned)fd_count, (unsigned)item.len);
+        (void)webim_ws_queue_json_to_fds(fds, fd_count, item.json);
+        free(item.json);
+    }
+}
+
+static void webim_ws_pending_clear(void)
+{
+    xSemaphoreTake(s_ws_mx, portMAX_DELAY);
+    while (s_pending_count > 0) {
+        free(s_pending[s_pending_head].json);
+        s_pending[s_pending_head].json = NULL;
+        s_pending_head = (s_pending_head + 1) % WEBIM_PENDING_MAX;
+        s_pending_count--;
+    }
+    s_pending_head = 0;
+    s_pending_tail = 0;
+    xSemaphoreGive(s_ws_mx);
 }
 
 static esp_err_t webim_emit_outbound_json(const cap_im_local_message_t *message)

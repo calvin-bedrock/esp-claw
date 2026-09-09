@@ -147,7 +147,7 @@ static esp_err_t recover_missing_files(const char *src_dir, const char *dst_dir)
             if (copy_err != ESP_OK) {
                 result = copy_err;
             } else {
-                ESP_LOGW(TAG, "recovered %s -> %s", src_path, dst_path);
+    ESP_LOGW(TAG, "recovered %s -> %s", src_path, dst_path);
             }
         }
     }
