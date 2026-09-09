@@ -194,35 +194,20 @@ static void love_runtime_task(void *arg)
     }
     lua_pop(L, 1); /* pop package */
 
-    /* 5. Load and execute main.lua */
-    bool script_loaded = false;
+    /* 5. Load and execute ONLY /spiffs/main.lua — no builtin demo fallback */
     struct stat st;
-    for (int i = 0; i < 2; ++i) {
-        if (stat(script_paths[i], &st) == 0 && st.st_size > 0) {
-            if (luaL_dofile(L, script_paths[i]) == LUA_OK) {
-                script_loaded = true;
-                ESP_LOGI(TAG, "loaded: %s", script_paths[i]);
-                break;
-            } else {
-                ESP_LOGW(TAG, "error loading %s: %s",
-                         script_paths[i], lua_tostring(L, -1));
-                lua_pop(L, 1);
-            }
-        }
+    if (stat("/spiffs/main.lua", &st) != 0 || st.st_size == 0) {
+        ESP_LOGI(TAG, "No custom Lua script at /spiffs/main.lua. Idle — no demo.");
+        vTaskDelete(NULL);
+        return;
     }
-
-    if (!script_loaded) {
-        luaL_dostring(L,
-            "love.update = love.update or function(dt) end\n"
-            "love.draw = love.draw or function()\n"
-            "    love.graphics.clear(16, 16, 48)\n"
-            "    love.graphics.print(\"Love2D Runtime\", 140, 80)\n"
-            "    love.graphics.print(\"No /spiffs/main.lua found\", 100, 160)\n"
-            "end\n"
-            "love.load = love.load or function() end\n"
-        );
-        ESP_LOGW(TAG, "no main.lua found; using fallback");
+    if (luaL_dofile(L, "/spiffs/main.lua") != LUA_OK) {
+        ESP_LOGE(TAG, "Fatal: /spiffs/main.lua load error: %s. Suspending.", lua_tostring(L, -1));
+        lua_pop(L, 1);
+        vTaskDelete(NULL);
+        return;
     }
+    ESP_LOGI(TAG, "loaded: /spiffs/main.lua");
 
     /* 6. Call love.load() */
     lua_getglobal(L, "love");
@@ -314,8 +299,10 @@ static void love_runtime_task(void *arg)
             lua_rawgeti(L, LUA_REGISTRYINDEX, s_love_update_ref);
             lua_pushnumber(L, (lua_Number)dt);
             if (lua_pcall(L, 1, 0, 0) != LUA_OK) {
-                ESP_LOGW(TAG, "love.update error: %s", lua_tostring(L, -1));
+                ESP_LOGE(TAG, "Fatal love.update error: %s. Suspending!", lua_tostring(L, -1));
                 lua_pop(L, 1);
+                vTaskSuspend(NULL);
+                return;
             }
         }
 
@@ -323,8 +310,10 @@ static void love_runtime_task(void *arg)
         if (s_love_draw_ref != LUA_NOREF) {
             lua_rawgeti(L, LUA_REGISTRYINDEX, s_love_draw_ref);
             if (lua_pcall(L, 0, 0, 0) != LUA_OK) {
-                ESP_LOGW(TAG, "love.draw error: %s", lua_tostring(L, -1));
+                ESP_LOGE(TAG, "Fatal love.draw error: %s. Suspending!", lua_tostring(L, -1));
                 lua_pop(L, 1);
+                vTaskSuspend(NULL);
+                return;
             }
         }
 
