@@ -52,9 +52,8 @@ typedef struct {
 static esp_err_t webim_ws_mx_ensure(void);
 static void webim_ws_fd_remove(int fd);
 static esp_err_t webim_ws_queue_json_to_fds(const int *fds, size_t fd_count, const char *json);
-static void webim_ws_flush_pending(void);
+static void webim_ws_flush_pending(int *fds, size_t fd_count);
 static void webim_ws_pending_push(const char *json);
-static void webim_ws_pending_clear(void);
 
 static void webim_ws_broadcast_job_run(void *arg)
 {
