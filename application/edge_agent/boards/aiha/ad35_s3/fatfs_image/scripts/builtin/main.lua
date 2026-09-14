@@ -1,0 +1,1 @@
+-- Empty bootstrap: module loaded only, zero drawing

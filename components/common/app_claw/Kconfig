@@ -477,6 +477,15 @@ menu "App Claw Config"
                 and camera support are enabled so its own Kconfig submenu can
                 define vision-specific options such as motion_detect and espdet.
 
+    config APP_CLAW_LUA_MODULE_LOVE2D
+            bool "Enable Love2D Lua runtime module"
+            default n
+            help
+                Enable the Love2D-compatible Lua API binding module for
+                board-level graphics, audio, and touch event handling.
+                The love.graphics, love.audio, and event callbacks become
+                available to Lua scripts.
+
     endmenu
 
 endmenu

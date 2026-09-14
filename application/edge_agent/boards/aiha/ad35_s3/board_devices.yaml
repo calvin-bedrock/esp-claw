@@ -12,7 +12,9 @@ devices:
     peripherals:
       - name: i2c_master
 
-  # AW9523 controls the LCD backlight cathodes (P8-P11) and reset (P14).
+  # AW9523 controls the LCD backlight cathodes (P8, P9, P11), reset (P14),
+  # speaker amplifier PA_CTRL (P13 = P1_5), sensor power (P12 = P1_4),
+  # and codec reset ES_CTRL (P10 = P1_2).
   - name: gpio_expander
     chip: aw9523b
     type: gpio_expander
@@ -23,8 +25,8 @@ devices:
         require: public
     config:
       max_pins: 16
-      output_io_mask: [8, 9, 10, 11, 14]
-      output_io_level_mask: [0, 0, 0, 0, 0]
+      output_io_mask: [8, 9, 10, 11, 12, 13, 14]
+      output_io_level_mask: [0, 0, 1, 0, 0, 0, 0]
       input_io_mask: null
     peripherals:
       - name: i2c_master
@@ -44,3 +46,41 @@ devices:
     config:
       lcd_width: 480
       lcd_height: 320
+
+  # Playback DAC — ES8311 @ 0x30.  PA_CTRL (HT6872 amplifier enable) is
+  # on AW9523 P1_5, not an ESP32 GPIO.  The audio_codec framework's
+  # gpio_pa_control peripheral cannot express an AW9523 pin, so the
+  # amplifier is controlled manually in setup_device.c through the AW9523
+  # expander handle.  This device declaration covers I2C codec init only.
+  - name: audio_dac
+    chip: es8311
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: false
+      dac_enabled: true
+      dac_max_channel: 1
+      dac_channel_mask: "1"      # Left channel
+      mclk_enabled: true
+    peripherals:
+      - name: i2s_audio_out
+      - name: i2c_master
+        address: 0x30
+        frequency: 400000
+
+  # Recording ADC — ES7210 @ 0x80.  Stereo microphone input (channels 1+2).
+  - name: audio_adc
+    chip: es7210
+    type: audio_codec
+    version: default
+    config:
+      adc_enabled: true
+      dac_enabled: false
+      adc_max_channel: 2
+      adc_channel_mask: "0011"   # Mic0 + Mic1 enabled
+      mclk_enabled: true
+    peripherals:
+      - name: i2s_audio_in
+      - name: i2c_master
+        address: 0x80
+        frequency: 400000
