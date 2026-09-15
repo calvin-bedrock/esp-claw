@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feat/add-ad35-s3-v2
+      - feature/lua-hot-reload-pixel-cat
   pull_request:
     branches:
       - master
