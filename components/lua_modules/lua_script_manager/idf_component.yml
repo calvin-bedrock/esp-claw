@@ -1,3 +1,5 @@
 dependencies:
   esp_vfs_fat:
+    version: "*"
   claw_core:
+    version: "*"
