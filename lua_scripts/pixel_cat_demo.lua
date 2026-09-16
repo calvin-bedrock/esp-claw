@@ -1,41 +1,25 @@
--- Pixel Cat Demo - Hot reload test
--- Uses simplified display UI module (love2d style)
+local gfx = require("display_ui")
+local current_state = 0  -- 0=idle, 1=eyes, 2=swipe, 3=wake, 4=angry
 
--- Access display functions
-local gfx = require("display_ui")  -- Will be registered as module
-
--- Pixel cat states (16x16 binary masks)
-local states = {"idle", "eyes", "swipe", "wakeup", "angry"}
-local current_state = 0
-
-function love.load()
-    gfx.clear(0, 0, 0)  -- Black background
-    gfx.print("Pixel Cat Demo", 10, 30)
-end
-
-function love.draw()
+function render_idle()
     gfx.clear(0, 0, 0)
     gfx.draw_cat(current_state, 120, 100)
-    gfx.print("State: " .. states[current_state + 1], 10, 200)
-    gfx.print("Double-tap or swipe to change", 10, 220)
+    gfx.print("Cat: IDLE", 10, 280)
+    gfx.print("tap | swipe | voice", 10, 300)
 end
 
-function love.update(dt)
-    -- State changes triggered by touch/voice events
-    -- For demo, auto-cycle slowly
-    -- (In real use, this would be triggered by pollTouch()/pollVoice())
-end
-
--- External trigger function (called by ESP-Claw event system)
-function set_cat_state(new_state)
-    if new_state >= 0 and new_state <= 4 then
-        current_state = new_state
+-- External trigger (from ESP-Claw event router or touch/voice event)
+function set_state(s)
+    if s >= 0 and s <= 4 then
+        current_state = s
         gfx.clear(0, 0, 0)
         gfx.draw_cat(current_state, 120, 100)
+        gfx.print("State: " .. tostring(s), 10, 280)
     end
 end
 
--- List available states for UI
 function get_states()
-    return states
+    return {"idle", "eyes", "swipe", "wakeup", "angry"}
 end
+
+render_idle()
