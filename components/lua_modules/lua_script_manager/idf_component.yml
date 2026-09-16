@@ -1,5 +1,5 @@
 dependencies:
   esp_vfs_fat:
-    path: ../../../../components/common/system_ui
+    path: ../../../common/system_ui
   claw_core:
-    path: ../../../../components/claw_modules/claw_core
+    path: ../../../claw_modules/claw_core
