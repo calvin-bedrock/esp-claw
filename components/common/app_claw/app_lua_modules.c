@@ -125,6 +125,9 @@
 #if CONFIG_APP_CLAW_LUA_MODULE_VISION && defined(CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT)
 #include "lua_module_vision.h"
 #endif
+#if CONFIG_APP_CLAW_LUA_MODULE_LOVE2D
+#include "lua_module_love2d.h"
+#endif
 
 static const char *TAG = "app_lua_modules";
 
@@ -607,6 +610,14 @@ static esp_err_t app_lua_register_vision(const char *fatfs_base_path)
 }
 #endif
 
+#if CONFIG_APP_CLAW_LUA_MODULE_LOVE2D
+static esp_err_t app_lua_register_love2d(const char *fatfs_base_path)
+{
+    (void)fatfs_base_path;
+    return lua_module_love2d_register();
+}
+#endif
+
 static const app_lua_module_entry_t s_lua_module_entries[] = {
     /* --- lua_driver (hardware peripheral drivers) --- */
 #if CONFIG_APP_CLAW_LUA_DRIVER_ADC
@@ -717,6 +728,9 @@ static const app_lua_module_entry_t s_lua_module_entries[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_VISION && defined(CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT)
     { "vision", "Vision", app_lua_register_vision },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_LOVE2D
+    { "love", "Love2D Runtime", app_lua_register_love2d },
 #endif
 };
 
@@ -830,6 +844,9 @@ static const app_lua_module_info_t s_lua_module_infos[] = {
 #endif
 #if CONFIG_APP_CLAW_LUA_MODULE_VISION && defined(CONFIG_ESP_BOARD_DEV_CAMERA_SUPPORT)
     { "vision", "Vision" },
+#endif
+#if CONFIG_APP_CLAW_LUA_MODULE_LOVE2D
+    { "love", "Love2D Runtime" },
 #endif
 };
 
