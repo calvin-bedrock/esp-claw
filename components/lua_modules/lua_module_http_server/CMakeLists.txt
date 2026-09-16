@@ -7,4 +7,5 @@ idf_component_register(
         cap_lua
         esp_http_server
         freertos
+        lua_script_manager
 )
