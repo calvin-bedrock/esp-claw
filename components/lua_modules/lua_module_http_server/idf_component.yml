@@ -1,0 +1,5 @@
+dependencies:
+  lua_script_manager:
+    rules:
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_HTTP_SERVER} == True
+    path: ../../../../components/lua_modules/lua_script_manager

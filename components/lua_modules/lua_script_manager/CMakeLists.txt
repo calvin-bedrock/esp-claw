@@ -1,0 +1,9 @@
+idf_component_register(
+    SRCS
+        "src/lua_script_manager.c"
+    INCLUDE_DIRS
+        "include"
+    REQUIRES
+        esp_vfs_fat
+        claw_core
+)

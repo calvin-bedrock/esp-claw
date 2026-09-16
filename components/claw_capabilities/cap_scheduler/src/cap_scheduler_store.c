@@ -227,11 +227,8 @@ static esp_err_t cap_scheduler_read_file(const char *path, char **out_buf)
     if (!file) {
         if (errno != ENOENT) {
             cap_scheduler_log_errno_failure("fopen(read)", path);
-            return ESP_FAIL;
         }
-        // File not found is acceptable — empty scheduler
-        *out_buf = NULL;
-        return ESP_OK;
+        return errno == ENOENT ? ESP_ERR_NOT_FOUND : ESP_FAIL;
     }
 
     if (fseek(file, 0, SEEK_END) != 0) {
@@ -247,24 +244,16 @@ static esp_err_t cap_scheduler_read_file(const char *path, char **out_buf)
     }
     rewind(file);
 
-    if (file_size == 0) {
-        // Empty file — acceptable for scheduler, treat as empty
-        fclose(file);
-        *out_buf = NULL;
-        return ESP_OK;
-    }
-
     buf = calloc(1, (size_t)file_size + 1);
     if (!buf) {
         fclose(file);
         return ESP_ERR_NO_MEM;
     }
 
-    size_t read_bytes = fread(buf, 1, (size_t)file_size, file);
-    if (read_bytes != (size_t)file_size) {
+    if (file_size > 0 && fread(buf, 1, (size_t)file_size, file) != (size_t)file_size) {
         cap_scheduler_log_errno_failure("fread", path);
-        free(buf);
         fclose(file);
+        free(buf);
         return ESP_FAIL;
     }
 
@@ -804,8 +793,7 @@ esp_err_t cap_scheduler_load_items(const char *path, cap_scheduler_item_t *items
     }
 
     err = cap_scheduler_read_file(path, &buf);
-    if (err == ESP_OK && buf == NULL) {
-        // File not found or empty — treat as empty scheduler
+    if (err == ESP_ERR_NOT_FOUND) {
         *out_count = 0;
         return ESP_OK;
     }
@@ -815,11 +803,6 @@ esp_err_t cap_scheduler_load_items(const char *path, cap_scheduler_item_t *items
 
     root = cJSON_Parse(buf);
     free(buf);
-    if (!root) {
-        // Invalid JSON — treat as empty scheduler
-        *out_count = 0;
-        return ESP_OK;
-    }
     if (!cJSON_IsArray(root)) {
         cJSON_Delete(root);
         return ESP_ERR_INVALID_RESPONSE;

@@ -3,7 +3,15 @@ name: Build AD35-S3 Firmware
 on:
   push:
     branches:
-      - feat/ad35s3-love2d-runtime
+      - feat/add-ad35-s3-v2
+      - feature/lua-hot-reload-pixel-cat
+      - feat/lua-hot-reload-pixel-cat-clean
+  pull_request:
+    branches:
+      - master
+    paths:
+      - "application/edge_agent/boards/aiha/ad35_s3/**"
+      - ".github/workflows/build-ad35-s3.yml"
   workflow_dispatch:
 
 jobs:
@@ -27,12 +35,6 @@ jobs:
         run: |
           source /opt/esp/idf/export.sh
           python -m pip install --disable-pip-version-check esp-bmgr-assist==0.8.3
-
-      - name: Resolve managed components
-        working-directory: application/edge_agent
-        run: |
-          source /opt/esp/idf/export.sh
-          IDF_TARGET=esp32s3 idf.py reconfigure
 
       - name: Generate Board Manager configuration
         working-directory: application/edge_agent

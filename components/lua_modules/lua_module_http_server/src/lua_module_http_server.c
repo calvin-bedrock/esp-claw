@@ -16,11 +16,14 @@
 
 #include "cJSON.h"
 #include "cap_lua.h"
+#include "lua_script_manager.h"
 #include "esp_log.h"
 #include "lauxlib.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
+
+static lua_script_manager_handle_t g_lua_script_manager = NULL;
 
 #define LUA_HTTP_SERVER_NAME             "http_server"
 #define LUA_HTTP_APP_MT                  "http_server.app"
@@ -724,6 +727,15 @@ int luaopen_http_server(lua_State *L)
     lua_newtable(L);
     lua_pushcfunction(L, lua_http_app_new);
     lua_setfield(L, -2, "app");
+
+    // Initialize Lua script manager for direct /api/lua/ execution
+    if (!g_lua_script_manager) {
+        g_lua_script_manager = lua_script_manager_create();
+        if (!g_lua_script_manager) {
+            ESP_LOGE("lua_http_server", "Failed to create lua script manager");
+        }
+    }
+
     return 1;
 }
 
@@ -931,6 +943,32 @@ esp_err_t lua_module_http_server_handle_api(httpd_req_t *req)
         free(call->body);
         free(call);
         return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Failed to read body");
+    }
+
+    // Direct script execution for /api/lua/ POST with body
+    if (call->method == LUA_HTTP_METHOD_POST && call->body_len > 0 && strcmp(call->path, "/api/lua/") == 0) {
+        if (!g_lua_script_manager) {
+            free(call->body);
+            free(call);
+            return httpd_resp_send_err(req, HTTPD_500_INTERNAL_SERVER_ERROR, "Script manager not initialized");
+        }
+        // Push script name (empty means use body content as script)
+        // We'll execute the script from body using the manager's Lua state
+        lua_State *L = ((lua_script_manager_t *)g_lua_script_manager)->L;
+        lua_pushcfunction(L, lua_script_execute);
+        // We need to push the script name; for direct execution we use a special marker
+        // For simplicity, we'll just execute the body as a string directly
+        luaL_loadstring(L, call->body);
+        int exec_err = lua_pcall(L, 0, LUA_MULTRET, 0);
+        const char *result = exec_err ? lua_tostring(L, -1) : "ok";
+        httpd_resp_set_status(req, "200 OK");
+        httpd_resp_set_type(req, "text/plain; charset=utf-8");
+        httpd_resp_set_hdr(req, "Cache-Control", "no-store, max-age=0");
+        httpd_resp_send(req, result, strlen(result));
+        lua_pop(L, 1); // remove result/error
+        free(call->body);
+        free(call);
+        return ESP_OK;
     }
 
     call->done = xSemaphoreCreateBinary();

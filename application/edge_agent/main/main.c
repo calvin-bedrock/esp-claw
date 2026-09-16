@@ -410,10 +410,7 @@ void app_main(void)
     }
 
     ESP_ERROR_CHECK(app_claw_set_save_config_callback(main_save_claw_config, NULL));
-    int ret = app_claw_start(s_claw_config);
-    if (ret != ESP_OK) {
-        ESP_LOGW("app_claw", "app_claw_start failed: %d, continuing anyway", ret);
-    }
+    ESP_ERROR_CHECK(app_claw_start(s_claw_config));
 #if CONFIG_APP_CLAW_CAP_IM_LOCAL
     ESP_ERROR_CHECK(http_server_webim_bind_im());
 #endif

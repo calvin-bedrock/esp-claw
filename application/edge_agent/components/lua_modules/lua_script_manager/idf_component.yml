@@ -1,0 +1,8 @@
+dependencies:
+  esp_vfs_fat:
+    version: "^1.7.19"
+  claw_core:
+    rules:
+      - if: $CONFIG{APP_CLAW_CAP_LUA} == True
+      - if: $CONFIG{APP_CLAW_LUA_MODULE_HTTP_SERVER} == True
+    path: ../../../../components/lua_modules/lua_script_manager
