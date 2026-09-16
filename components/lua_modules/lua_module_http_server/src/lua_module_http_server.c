@@ -16,11 +16,14 @@
 
 #include "cJSON.h"
 #include "cap_lua.h"
+#include "lua_script_manager.h"
 #include "esp_log.h"
 #include "lauxlib.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "freertos/queue.h"
+
+static lua_script_manager_handle_t g_lua_script_manager = NULL;
 
 #define LUA_HTTP_SERVER_NAME             "http_server"
 #define LUA_HTTP_APP_MT                  "http_server.app"
@@ -724,6 +727,15 @@ int luaopen_http_server(lua_State *L)
     lua_newtable(L);
     lua_pushcfunction(L, lua_http_app_new);
     lua_setfield(L, -2, "app");
+
+    // Initialize Lua script manager for direct /api/lua/ execution
+    if (!g_lua_script_manager) {
+        g_lua_script_manager = lua_script_manager_create();
+        if (!g_lua_script_manager) {
+            ESP_LOGE("lua_http_server", "Failed to create lua script manager");
+        }
+    }
+
     return 1;
 }
 
