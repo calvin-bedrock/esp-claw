@@ -1,0 +1,3 @@
+dependencies:
+  esp_vfs_fat:
+  claw_core:
